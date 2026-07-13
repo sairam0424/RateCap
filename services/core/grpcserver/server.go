@@ -8,25 +8,42 @@ import (
 	"github.com/ratecap/core/limiter"
 )
 
-type Server struct {
-	ratecapv1.UnimplementedRatecapServiceServer
-	limiter limiter.Limiter
+type checker interface {
+	Check(ctx context.Context, req limiter.Request) (limiter.Decision, error)
 }
 
-func NewServer(l limiter.Limiter) *Server {
-	return &Server{limiter: l}
+type concurrencyReleaser interface {
+	DecrConcurrent(ctx context.Context, key, token string) error
+}
+
+type Server struct {
+	ratecapv1.UnimplementedRatecapServiceServer
+	pipeline checker
+	releaser concurrencyReleaser
+}
+
+func NewServer(p checker, releaser concurrencyReleaser) *Server {
+	return &Server{pipeline: p, releaser: releaser}
 }
 
 func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLimitRequest) (*ratecapv1.CheckRateLimitResponse, error) {
-	decision, err := s.limiter.Check(ctx, limiter.Request{Key: req.Key, Cost: int(req.Cost)})
+	decision, err := s.pipeline.Check(ctx, limiter.Request{Key: req.Key, Cost: int(req.Cost)})
 	if err != nil {
 		return nil, err
 	}
 
 	return &ratecapv1.CheckRateLimitResponse{
-		Action:       toProtoAction(decision.Action),
-		RetryAfterMs: decision.RetryAfterMs,
+		Action:           toProtoAction(decision.Action),
+		RetryAfterMs:     decision.RetryAfterMs,
+		ConcurrencyToken: decision.Token,
 	}, nil
+}
+
+func (s *Server) ReleaseConcurrency(ctx context.Context, req *ratecapv1.ReleaseConcurrencyRequest) (*ratecapv1.ReleaseConcurrencyResponse, error) {
+	if err := s.releaser.DecrConcurrent(ctx, req.Key, req.ConcurrencyToken); err != nil {
+		return nil, err
+	}
+	return &ratecapv1.ReleaseConcurrencyResponse{}, nil
 }
 
 func toProtoAction(a limiter.Action) ratecapv1.Action {
