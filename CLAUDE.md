@@ -8,8 +8,8 @@ RateCap: a hybrid core-engine + sidecar rate-limiter/load-shedder, faithfully re
 
 ## Build & test
 
-- **build all**: `go build ./...` from repo root (uses `go.work`)
-- **test all**: `go build ./... && go test ./...` from repo root
+- **build all modules**: `for m in proto services/core services/sidecar packages/sdks/go deploy/sampleapp; do (cd "$m" && go build ./...); done` — each module is a separate `go.mod` and must be built individually
+- **test all modules**: `for m in proto services/core services/sidecar packages/sdks/go; do (cd "$m" && go test ./...); done` — runs tests in all Go modules (proto, services/core, services/sidecar, packages/sdks/go; excludes deploy/sampleapp which is a demo binary with no tests)
 - **test one module**: `cd services/core && go test ./... -v`
 - **regenerate proto**: `protoc -I proto --go_out=proto --go_opt=module=github.com/ratecap/proto --go-grpc_out=proto --go-grpc_opt=module=github.com/ratecap/proto ratecap/v1/ratecap.proto` (run from repo root; requires `protoc-gen-go` and `protoc-gen-go-grpc` on `PATH`; `-I proto` keeps the file descriptor's canonical name as `ratecap/v1/ratecap.proto`, not `proto/ratecap/v1/ratecap.proto`)
 - **run the demo stack**: `cd deploy && docker compose up --build`
