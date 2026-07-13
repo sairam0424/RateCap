@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.34.1
-// source: proto/ratecap/v1/ratecap.proto
+// source: ratecap/v1/ratecap.proto
 
 package ratecapv1
 
@@ -57,11 +57,11 @@ func (x Action) String() string {
 }
 
 func (Action) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_ratecap_v1_ratecap_proto_enumTypes[0].Descriptor()
+	return file_ratecap_v1_ratecap_proto_enumTypes[0].Descriptor()
 }
 
 func (Action) Type() protoreflect.EnumType {
-	return &file_proto_ratecap_v1_ratecap_proto_enumTypes[0]
+	return &file_ratecap_v1_ratecap_proto_enumTypes[0]
 }
 
 func (x Action) Number() protoreflect.EnumNumber {
@@ -70,7 +70,7 @@ func (x Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Action.Descriptor instead.
 func (Action) EnumDescriptor() ([]byte, []int) {
-	return file_proto_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{0}
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{0}
 }
 
 type CheckRateLimitRequest struct {
@@ -83,7 +83,7 @@ type CheckRateLimitRequest struct {
 
 func (x *CheckRateLimitRequest) Reset() {
 	*x = CheckRateLimitRequest{}
-	mi := &file_proto_ratecap_v1_ratecap_proto_msgTypes[0]
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -95,7 +95,7 @@ func (x *CheckRateLimitRequest) String() string {
 func (*CheckRateLimitRequest) ProtoMessage() {}
 
 func (x *CheckRateLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ratecap_v1_ratecap_proto_msgTypes[0]
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -108,7 +108,7 @@ func (x *CheckRateLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckRateLimitRequest.ProtoReflect.Descriptor instead.
 func (*CheckRateLimitRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{0}
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CheckRateLimitRequest) GetKey() string {
@@ -135,7 +135,7 @@ type CheckRateLimitResponse struct {
 
 func (x *CheckRateLimitResponse) Reset() {
 	*x = CheckRateLimitResponse{}
-	mi := &file_proto_ratecap_v1_ratecap_proto_msgTypes[1]
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -147,7 +147,7 @@ func (x *CheckRateLimitResponse) String() string {
 func (*CheckRateLimitResponse) ProtoMessage() {}
 
 func (x *CheckRateLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ratecap_v1_ratecap_proto_msgTypes[1]
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -160,7 +160,7 @@ func (x *CheckRateLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckRateLimitResponse.ProtoReflect.Descriptor instead.
 func (*CheckRateLimitResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{1}
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CheckRateLimitResponse) GetAction() Action {
@@ -177,11 +177,11 @@ func (x *CheckRateLimitResponse) GetRetryAfterMs() int64 {
 	return 0
 }
 
-var File_proto_ratecap_v1_ratecap_proto protoreflect.FileDescriptor
+var File_ratecap_v1_ratecap_proto protoreflect.FileDescriptor
 
-const file_proto_ratecap_v1_ratecap_proto_rawDesc = "" +
+const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\n" +
-	"\x1eproto/ratecap/v1/ratecap.proto\x12\n" +
+	"\x18ratecap/v1/ratecap.proto\x12\n" +
 	"ratecap.v1\"=\n" +
 	"\x15CheckRateLimitRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
@@ -201,25 +201,25 @@ const file_proto_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\x0eCheckRateLimit\x12!.ratecap.v1.CheckRateLimitRequest\x1a\".ratecap.v1.CheckRateLimitResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
 
 var (
-	file_proto_ratecap_v1_ratecap_proto_rawDescOnce sync.Once
-	file_proto_ratecap_v1_ratecap_proto_rawDescData []byte
+	file_ratecap_v1_ratecap_proto_rawDescOnce sync.Once
+	file_ratecap_v1_ratecap_proto_rawDescData []byte
 )
 
-func file_proto_ratecap_v1_ratecap_proto_rawDescGZIP() []byte {
-	file_proto_ratecap_v1_ratecap_proto_rawDescOnce.Do(func() {
-		file_proto_ratecap_v1_ratecap_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_ratecap_v1_ratecap_proto_rawDesc), len(file_proto_ratecap_v1_ratecap_proto_rawDesc)))
+func file_ratecap_v1_ratecap_proto_rawDescGZIP() []byte {
+	file_ratecap_v1_ratecap_proto_rawDescOnce.Do(func() {
+		file_ratecap_v1_ratecap_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_ratecap_v1_ratecap_proto_rawDesc), len(file_ratecap_v1_ratecap_proto_rawDesc)))
 	})
-	return file_proto_ratecap_v1_ratecap_proto_rawDescData
+	return file_ratecap_v1_ratecap_proto_rawDescData
 }
 
-var file_proto_ratecap_v1_ratecap_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_proto_ratecap_v1_ratecap_proto_goTypes = []any{
+var file_ratecap_v1_ratecap_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_ratecap_v1_ratecap_proto_goTypes = []any{
 	(Action)(0),                    // 0: ratecap.v1.Action
 	(*CheckRateLimitRequest)(nil),  // 1: ratecap.v1.CheckRateLimitRequest
 	(*CheckRateLimitResponse)(nil), // 2: ratecap.v1.CheckRateLimitResponse
 }
-var file_proto_ratecap_v1_ratecap_proto_depIdxs = []int32{
+var file_ratecap_v1_ratecap_proto_depIdxs = []int32{
 	0, // 0: ratecap.v1.CheckRateLimitResponse.action:type_name -> ratecap.v1.Action
 	1, // 1: ratecap.v1.RatecapService.CheckRateLimit:input_type -> ratecap.v1.CheckRateLimitRequest
 	2, // 2: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
@@ -230,27 +230,27 @@ var file_proto_ratecap_v1_ratecap_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_proto_ratecap_v1_ratecap_proto_init() }
-func file_proto_ratecap_v1_ratecap_proto_init() {
-	if File_proto_ratecap_v1_ratecap_proto != nil {
+func init() { file_ratecap_v1_ratecap_proto_init() }
+func file_ratecap_v1_ratecap_proto_init() {
+	if File_ratecap_v1_ratecap_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_ratecap_v1_ratecap_proto_rawDesc), len(file_proto_ratecap_v1_ratecap_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ratecap_v1_ratecap_proto_rawDesc), len(file_ratecap_v1_ratecap_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_ratecap_v1_ratecap_proto_goTypes,
-		DependencyIndexes: file_proto_ratecap_v1_ratecap_proto_depIdxs,
-		EnumInfos:         file_proto_ratecap_v1_ratecap_proto_enumTypes,
-		MessageInfos:      file_proto_ratecap_v1_ratecap_proto_msgTypes,
+		GoTypes:           file_ratecap_v1_ratecap_proto_goTypes,
+		DependencyIndexes: file_ratecap_v1_ratecap_proto_depIdxs,
+		EnumInfos:         file_ratecap_v1_ratecap_proto_enumTypes,
+		MessageInfos:      file_ratecap_v1_ratecap_proto_msgTypes,
 	}.Build()
-	File_proto_ratecap_v1_ratecap_proto = out.File
-	file_proto_ratecap_v1_ratecap_proto_goTypes = nil
-	file_proto_ratecap_v1_ratecap_proto_depIdxs = nil
+	File_ratecap_v1_ratecap_proto = out.File
+	file_ratecap_v1_ratecap_proto_goTypes = nil
+	file_ratecap_v1_ratecap_proto_depIdxs = nil
 }
