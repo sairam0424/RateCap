@@ -2,12 +2,14 @@ package limiter_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/ratecap/core/limiter"
 )
 
 type fakeStore struct {
+	mu     sync.Mutex
 	tokens map[string]int
 }
 
@@ -16,6 +18,9 @@ func newFakeStore() *fakeStore {
 }
 
 func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, cost int) (bool, int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	remaining, ok := f.tokens[key]
 	if !ok {
 		remaining = burst
@@ -98,4 +103,27 @@ func TestTokenBucketLimiter_ReconfigureChangesLimits(t *testing.T) {
 	if d.Action != limiter.SHADOW_LOG {
 		t.Fatalf("expected SHADOW_LOG after enabling shadow mode via reconfigure, got %v", d.Action)
 	}
+}
+
+func TestTokenBucketLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 100, false)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = l.Check(ctx, limiter.Request{Key: "user-race", Cost: 1})
+		}()
+	}
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			l.Reconfigure(10, 100, n%2 == 0)
+		}(i)
+	}
+	wg.Wait()
 }
