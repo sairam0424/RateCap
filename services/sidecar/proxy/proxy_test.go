@@ -66,3 +66,18 @@ func TestServeHTTP_ShadowLogReturns200(t *testing.T) {
 		t.Errorf("expected 200 in shadow mode, got %d", rec.Code)
 	}
 }
+
+func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-priority", "critical")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 regardless of priority header (tier 1 ignores it), got %d", rec.Code)
+	}
+}
