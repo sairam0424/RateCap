@@ -1,0 +1,4 @@
+/deploy/sampleapp/sampleapp
+/services/core/core
+/services/sidecar/sidecar
+*.test

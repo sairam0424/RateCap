@@ -82,10 +82,17 @@ type StateStore interface {
 Each tier implements a shared interface so `ratecap-core` composes them into a pipeline without tier-specific glue code in the sidecar:
 
 ```go
+type Request struct {
+    Key  string
+    Cost int
+}
+
 type Limiter interface {
-    Check(ctx context.Context, key string, req *Request) (Decision, error)
+    Check(ctx context.Context, req Request) (Decision, error)
 }
 ```
+
+`Request` carries `key` as a field rather than a separate parameter, and is passed by value — this matches the flat `CheckRateLimitRequest{key, cost}` shape already fixed by the Tier-1 gRPC contract (`proto/ratecap/v1/ratecap.proto`), so the gRPC-to-`Limiter` mapping in `ratecap-core` stays a straight field copy with no restructuring at the seam.
 
 | Tier | Mechanism | Storage | Default action on trip |
 |---|---|---|---|

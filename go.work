@@ -1,0 +1,11 @@
+go 1.26.2
+
+use ./proto
+
+use ./services/core
+
+use (
+	./deploy/sampleapp
+	./packages/sdks/go
+	./services/sidecar
+)
