@@ -9,11 +9,10 @@ import (
 
 type fakeStore struct {
 	tokens map[string]int
-	burst  int
 }
 
-func newFakeStore(burst int) *fakeStore {
-	return &fakeStore{tokens: make(map[string]int), burst: burst}
+func newFakeStore() *fakeStore {
+	return &fakeStore{tokens: make(map[string]int)}
 }
 
 func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, cost int) (bool, int64, error) {
@@ -29,7 +28,7 @@ func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, c
 }
 
 func TestTokenBucketLimiter_AllowsExactlyBurstRequests(t *testing.T) {
-	fs := newFakeStore(5)
+	fs := newFakeStore()
 	l := limiter.NewTokenBucketLimiter(fs, 10, 5, false)
 	ctx := context.Background()
 
@@ -56,7 +55,7 @@ func TestTokenBucketLimiter_AllowsExactlyBurstRequests(t *testing.T) {
 }
 
 func TestTokenBucketLimiter_ShadowModeAlwaysAllows(t *testing.T) {
-	fs := newFakeStore(1)
+	fs := newFakeStore()
 	l := limiter.NewTokenBucketLimiter(fs, 10, 1, true)
 	ctx := context.Background()
 
