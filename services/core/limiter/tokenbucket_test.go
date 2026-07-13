@@ -71,3 +71,31 @@ func TestTokenBucketLimiter_ShadowModeAlwaysAllows(t *testing.T) {
 		t.Fatalf("expected SHADOW_LOG when over limit in shadow mode, got %v", d.Action)
 	}
 }
+
+func TestTokenBucketLimiter_ReconfigureChangesLimits(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 1, false)
+	ctx := context.Background()
+
+	if _, err := l.Check(ctx, limiter.Request{Key: "user-3", Cost: 1}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	d, err := l.Check(ctx, limiter.Request{Key: "user-3", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.REJECT_429 {
+		t.Fatalf("expected REJECT_429 before reconfigure, got %v", d.Action)
+	}
+
+	l.Reconfigure(10, 1, true)
+
+	d, err = l.Check(ctx, limiter.Request{Key: "user-3", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.SHADOW_LOG {
+		t.Fatalf("expected SHADOW_LOG after enabling shadow mode via reconfigure, got %v", d.Action)
+	}
+}

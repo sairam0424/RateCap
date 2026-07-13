@@ -17,6 +17,12 @@ func NewTokenBucketLimiter(s checker, rate, burst int, shadowMode bool) *TokenBu
 	return &TokenBucketLimiter{store: s, rate: rate, burst: burst, shadowMode: shadowMode}
 }
 
+func (l *TokenBucketLimiter) Reconfigure(rate, burst int, shadowMode bool) {
+	l.rate = rate
+	l.burst = burst
+	l.shadowMode = shadowMode
+}
+
 func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, error) {
 	allowed, retryAfterMs, err := l.store.CheckAndDecrement(ctx, req.Key, l.rate, l.burst, req.Cost)
 	if err != nil {
