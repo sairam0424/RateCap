@@ -61,7 +61,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope
 
 Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`, `build`.
 
-```
+```text
 feat(core): add tier-2 concurrent-requests limiter
 fix(sidecar): correct priority header fallback order
 docs: update architecture diagram for tier-2 rollout
