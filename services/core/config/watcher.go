@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
@@ -30,14 +31,16 @@ func Watch(path string, onChange func(*Config)) (stop func(), err error) {
 				if event.Name == path && (event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0) {
 					cfg, err := Load(path)
 					if err != nil {
+						log.Printf("error reloading config %s: %v", path, err)
 						continue
 					}
 					onChange(cfg)
 				}
-			case _, ok := <-watcher.Errors:
+			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
+				log.Printf("error watching config %s: %v", path, err)
 			case <-done:
 				return
 			}

@@ -50,3 +50,64 @@ tiers:
 		t.Fatal("timed out waiting for config reload callback")
 	}
 }
+
+func TestWatch_SkipsInvalidConfigWithoutCrashing(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`)
+
+	changes := make(chan *config.Config, 1)
+	stop, err := config.Watch(path, func(cfg *config.Config) {
+		changes <- cfg
+	})
+	if err != nil {
+		t.Fatalf("unexpected error starting watch: %v", err)
+	}
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	invalidContents := `
+sync_rate: "not a number"
+tiers:
+  rate_limiter:
+    default_rate: invalid
+`
+	if err := os.WriteFile(path, []byte(invalidContents), 0644); err != nil {
+		t.Fatalf("failed to update config: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-changes:
+		t.Error("onChange should not be called for invalid config")
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	validContents := `
+sync_rate: 15
+tiers:
+  rate_limiter:
+    default_rate: 300
+    default_burst: 1500
+    shadow_mode: true
+`
+	if err := os.WriteFile(path, []byte(validContents), 0644); err != nil {
+		t.Fatalf("failed to write valid config: %v", err)
+	}
+
+	select {
+	case cfg := <-changes:
+		if cfg.SyncRate != 15 {
+			t.Errorf("expected recovery to valid config with SyncRate=15, got %d", cfg.SyncRate)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for recovery after invalid config")
+	}
+}
