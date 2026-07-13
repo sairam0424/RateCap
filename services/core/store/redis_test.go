@@ -3,7 +3,6 @@ package store_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
@@ -107,6 +106,4 @@ func TestCheckAndDecrement_ConcurrentAtomicity(t *testing.T) {
 	if allowedCount != burst {
 		t.Fatalf("expected exactly %d allowed under concurrent load, got %d", burst, allowedCount)
 	}
-
-	_ = time.Now()
 }

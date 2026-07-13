@@ -1,4 +1,3 @@
--- services/core/store/lua/token_bucket.lua
 -- KEYS[1] = bucket key
 -- ARGV[1] = rate (tokens per second)
 -- ARGV[2] = burst (max bucket capacity)
@@ -26,15 +25,15 @@ local elapsed_ms = math.max(0, now - updated_at)
 local refill = (elapsed_ms / 1000) * rate
 tokens = math.min(burst, tokens + refill)
 
+local allowed, retry_after_ms
 if tokens >= cost then
   tokens = tokens - cost
-  redis.call("HSET", key, "tokens", tokens, "updated_at", now)
-  redis.call("EXPIRE", key, math.ceil(burst / rate) + 60)
-  return {1, 0}
+  allowed, retry_after_ms = 1, 0
 else
   local deficit = cost - tokens
-  local retry_after_ms = math.ceil((deficit / rate) * 1000)
-  redis.call("HSET", key, "tokens", tokens, "updated_at", now)
-  redis.call("EXPIRE", key, math.ceil(burst / rate) + 60)
-  return {0, retry_after_ms}
+  allowed, retry_after_ms = 0, math.ceil((deficit / rate) * 1000)
 end
+
+redis.call("HSET", key, "tokens", tokens, "updated_at", now)
+redis.call("EXPIRE", key, math.ceil(burst / rate) + 60)
+return {allowed, retry_after_ms}
