@@ -42,8 +42,18 @@ func main() {
 		cfg.Tiers.RateLimiter.ShadowMode,
 	)
 
+	concurrencyLimiter := limiter.NewConcurrencyLimiter(
+		redisStore,
+		cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent,
+		cfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs,
+		cfg.Tiers.ConcurrencyLimiter.ShadowMode,
+	)
+
+	pipeline := limiter.NewPipeline(rateLimiter, concurrencyLimiter)
+
 	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config) {
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
+		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode)
 	})
 	if err != nil {
 		log.Fatalf("failed to start config watcher: %v", err)
@@ -61,7 +71,7 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(rateLimiter))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore))
 
 	log.Printf("ratecap-core listening on %s", listenAddr)
 	if err := grpcServer.Serve(lis); err != nil {
