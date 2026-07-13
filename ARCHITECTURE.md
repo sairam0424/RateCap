@@ -6,7 +6,7 @@ For the full design rationale, decision history, and research basis, see [`docs/
 
 ## Component overview
 
-```
+```text
 App (any language) -> RateCap SDK (thin client) -> ratecap-sidecar (local, per-host)
                                                           |
                                                           | gRPC (only on cache-miss/sync)
