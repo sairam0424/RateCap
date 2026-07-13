@@ -40,6 +40,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resp.ConcurrencyToken != "" {
+		w.Header().Set("Concurrency-Token", resp.ConcurrencyToken)
+	}
+
 	action := resp.Action
 	if shadow.GlobalOverrideEnabled() {
 		action = shadow.CoerceIfShadowOverridden(action, true)
@@ -54,4 +58,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case ratecapv1.Action_REJECT_503:
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
+}
+
+type releaseClient interface {
+	ReleaseConcurrency(ctx context.Context, in *ratecapv1.ReleaseConcurrencyRequest, opts ...grpc.CallOption) (*ratecapv1.ReleaseConcurrencyResponse, error)
+}
+
+type ReleaseHandler struct {
+	client releaseClient
+}
+
+func NewReleaseHandler(client releaseClient) *ReleaseHandler {
+	return &ReleaseHandler{client: client}
+}
+
+func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		http.Error(w, "missing key parameter", http.StatusBadRequest)
+		return
+	}
+	token := r.URL.Query().Get("token")
+
+	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
+	if err != nil {
+		http.Error(w, "upstream release failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

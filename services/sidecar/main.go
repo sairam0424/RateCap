@@ -26,7 +26,10 @@ func main() {
 	defer conn.Close()
 
 	client := ratecapv1.NewRatecapServiceClient(conn)
-	handler := proxy.NewHandler(client, proxy.Sheddable)
+
+	mux := http.NewServeMux()
+	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable))
+	mux.Handle("/release", proxy.NewReleaseHandler(client))
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {
@@ -34,7 +37,7 @@ func main() {
 	}
 
 	log.Printf("ratecap-sidecar listening on %s, forwarding to core at %s", listenAddr, coreAddr)
-	if err := http.ListenAndServe(listenAddr, http.HandlerFunc(handler.ServeHTTP)); err != nil {
+	if err := http.ListenAndServe(listenAddr, mux); err != nil {
 		log.Fatalf("sidecar http server failed: %v", err)
 	}
 }

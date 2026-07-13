@@ -2,6 +2,7 @@ package proxy_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -79,5 +80,93 @@ func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 regardless of priority header (tier 1 ignores it), got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_SetsConcurrencyTokenHeaderWhenPresent(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW, ConcurrencyToken: "tok-abc"}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Header().Get("Concurrency-Token") != "tok-abc" {
+		t.Errorf("expected Concurrency-Token header %q, got %q", "tok-abc", rec.Header().Get("Concurrency-Token"))
+	}
+}
+
+func TestServeHTTP_OmitsConcurrencyTokenHeaderWhenEmpty(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW, ConcurrencyToken: ""}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Header().Get("Concurrency-Token") != "" {
+		t.Errorf("expected no Concurrency-Token header, got %q", rec.Header().Get("Concurrency-Token"))
+	}
+}
+
+type fakeReleaseClient struct {
+	lastKey   string
+	lastToken string
+	err       error
+}
+
+func (f *fakeReleaseClient) ReleaseConcurrency(_ context.Context, in *ratecapv1.ReleaseConcurrencyRequest, _ ...grpc.CallOption) (*ratecapv1.ReleaseConcurrencyResponse, error) {
+	f.lastKey = in.Key
+	f.lastToken = in.ConcurrencyToken
+	return &ratecapv1.ReleaseConcurrencyResponse{}, f.err
+}
+
+func TestReleaseHandler_ServeHTTP_CallsReleaseConcurrencyWithKeyAndToken(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if client.lastKey != "user-1" {
+		t.Errorf("expected ReleaseConcurrency called with key=%q, got %q", "user-1", client.lastKey)
+	}
+	if client.lastToken != "tok-abc" {
+		t.Errorf("expected ReleaseConcurrency called with token=%q, got %q", "tok-abc", client.lastToken)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_MissingKeyReturns400(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release?token=tok-abc", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_UpstreamErrorReturns500(t *testing.T) {
+	client := &fakeReleaseClient{err: errors.New("core unavailable")}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
 	}
 }
