@@ -1,4 +1,3 @@
-// deploy/sampleapp/main.go
 package main
 
 import (

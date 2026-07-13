@@ -1,4 +1,3 @@
-# deploy/ratecap.yaml
 sync_rate: 5
 tiers:
   rate_limiter:
