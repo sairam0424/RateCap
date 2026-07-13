@@ -83,6 +83,58 @@ func TestConcurrencyLimiter_ShadowModeAlwaysAllows(t *testing.T) {
 	}
 }
 
+func TestConcurrencyLimiter_ShadowModeStillReservesSlot(t *testing.T) {
+	fs := newFakeConcurrencyStore()
+	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, true)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		d, err := l.Check(ctx, limiter.Request{Key: "user-4"})
+		if err != nil {
+			t.Fatalf("unexpected error on request %d: %v", i, err)
+		}
+		if i > 0 {
+			if d.Action != limiter.SHADOW_LOG {
+				t.Fatalf("request %d: expected SHADOW_LOG, got %v", i, d.Action)
+			}
+			if d.Token == "" {
+				t.Fatalf("request %d: expected a reserved token even in shadow mode, got empty string", i)
+			}
+		}
+	}
+
+	fs.mu.Lock()
+	count := fs.tokens["user-4"]
+	fs.mu.Unlock()
+
+	if count != 3 {
+		t.Fatalf("expected shadow mode to reserve a slot for every over-cap request (accurate accounting), got tracked count %d, want 3", count)
+	}
+}
+
+func TestConcurrencyLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T) {
+	fs := newFakeConcurrencyStore()
+	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = l.Check(ctx, limiter.Request{Key: "user-race"})
+		}()
+	}
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			l.Reconfigure(10, 30000, n%2 == 0)
+		}(i)
+	}
+	wg.Wait()
+}
+
 func TestConcurrencyLimiter_ReconfigureChangesCap(t *testing.T) {
 	fs := newFakeConcurrencyStore()
 	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false)
