@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package ratecap.v1;
+
+option go_package = "github.com/ratecap/proto/ratecap/v1;ratecapv1";
+
+service RatecapService {
+  rpc CheckRateLimit(CheckRateLimitRequest) returns (CheckRateLimitResponse);
+}
+
+enum Action {
+  ALLOW = 0;
+  REJECT_429 = 1;
+  REJECT_503 = 2;
+  SHADOW_LOG = 3;
+}
+
+message CheckRateLimitRequest {
+  string key = 1;
+  int32 cost = 2;
+}
+
+message CheckRateLimitResponse {
+  Action action = 1;
+  int64 retry_after_ms = 2;
+}
