@@ -1,0 +1,44 @@
+# deploy/docker-compose.yml
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  core:
+    build:
+      context: ..
+      dockerfile: services/core/Dockerfile
+    environment:
+      RATECAP_CONFIG_PATH: /etc/ratecap/ratecap.yaml
+      RATECAP_REDIS_ADDR: redis:6379
+      RATECAP_GRPC_ADDR: :9090
+    volumes:
+      - ./ratecap.yaml:/etc/ratecap/ratecap.yaml
+    depends_on:
+      - redis
+    ports:
+      - "9090:9090"
+
+  sidecar:
+    build:
+      context: ..
+      dockerfile: services/sidecar/Dockerfile
+    environment:
+      RATECAP_CORE_ADDR: core:9090
+      RATECAP_SIDECAR_ADDR: :8080
+    depends_on:
+      - core
+    ports:
+      - "8080:8080"
+
+  sampleapp:
+    build:
+      context: ..
+      dockerfile: deploy/sampleapp/Dockerfile
+    environment:
+      RATECAP_SIDECAR_ADDR: http://sidecar:8080
+    depends_on:
+      - sidecar
+    ports:
+      - "3000:3000"

@@ -5,6 +5,7 @@ use ./proto
 use ./services/core
 
 use (
+	./deploy/sampleapp
 	./packages/sdks/go
 	./services/sidecar
 )

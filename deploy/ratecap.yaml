@@ -1,0 +1,7 @@
+# deploy/ratecap.yaml
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 2
+    default_burst: 5
+    shadow_mode: false
