@@ -4,4 +4,7 @@ use ./proto
 
 use ./services/core
 
-use ./services/sidecar
+use (
+	./packages/sdks/go
+	./services/sidecar
+)
