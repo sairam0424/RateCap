@@ -6,6 +6,7 @@ option go_package = "github.com/ratecap/proto/ratecap/v1;ratecapv1";
 
 service RatecapService {
   rpc CheckRateLimit(CheckRateLimitRequest) returns (CheckRateLimitResponse);
+  rpc ReleaseConcurrency(ReleaseConcurrencyRequest) returns (ReleaseConcurrencyResponse);
 }
 
 enum Action {
@@ -23,4 +24,12 @@ message CheckRateLimitRequest {
 message CheckRateLimitResponse {
   Action action = 1;
   int64 retry_after_ms = 2;
+  string concurrency_token = 3;
 }
+
+message ReleaseConcurrencyRequest {
+  string key = 1;
+  string concurrency_token = 2;
+}
+
+message ReleaseConcurrencyResponse {}

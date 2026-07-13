@@ -126,11 +126,12 @@ func (x *CheckRateLimitRequest) GetCost() int32 {
 }
 
 type CheckRateLimitResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Action        Action                 `protobuf:"varint,1,opt,name=action,proto3,enum=ratecap.v1.Action" json:"action,omitempty"`
-	RetryAfterMs  int64                  `protobuf:"varint,2,opt,name=retry_after_ms,json=retryAfterMs,proto3" json:"retry_after_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Action           Action                 `protobuf:"varint,1,opt,name=action,proto3,enum=ratecap.v1.Action" json:"action,omitempty"`
+	RetryAfterMs     int64                  `protobuf:"varint,2,opt,name=retry_after_ms,json=retryAfterMs,proto3" json:"retry_after_ms,omitempty"`
+	ConcurrencyToken string                 `protobuf:"bytes,3,opt,name=concurrency_token,json=concurrencyToken,proto3" json:"concurrency_token,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CheckRateLimitResponse) Reset() {
@@ -177,6 +178,101 @@ func (x *CheckRateLimitResponse) GetRetryAfterMs() int64 {
 	return 0
 }
 
+func (x *CheckRateLimitResponse) GetConcurrencyToken() string {
+	if x != nil {
+		return x.ConcurrencyToken
+	}
+	return ""
+}
+
+type ReleaseConcurrencyRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Key              string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	ConcurrencyToken string                 `protobuf:"bytes,2,opt,name=concurrency_token,json=concurrencyToken,proto3" json:"concurrency_token,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ReleaseConcurrencyRequest) Reset() {
+	*x = ReleaseConcurrencyRequest{}
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseConcurrencyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseConcurrencyRequest) ProtoMessage() {}
+
+func (x *ReleaseConcurrencyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseConcurrencyRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseConcurrencyRequest) Descriptor() ([]byte, []int) {
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ReleaseConcurrencyRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *ReleaseConcurrencyRequest) GetConcurrencyToken() string {
+	if x != nil {
+		return x.ConcurrencyToken
+	}
+	return ""
+}
+
+type ReleaseConcurrencyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseConcurrencyResponse) Reset() {
+	*x = ReleaseConcurrencyResponse{}
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseConcurrencyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseConcurrencyResponse) ProtoMessage() {}
+
+func (x *ReleaseConcurrencyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseConcurrencyResponse.ProtoReflect.Descriptor instead.
+func (*ReleaseConcurrencyResponse) Descriptor() ([]byte, []int) {
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{3}
+}
+
 var File_ratecap_v1_ratecap_proto protoreflect.FileDescriptor
 
 const file_ratecap_v1_ratecap_proto_rawDesc = "" +
@@ -185,10 +281,15 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"ratecap.v1\"=\n" +
 	"\x15CheckRateLimitRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
-	"\x04cost\x18\x02 \x01(\x05R\x04cost\"j\n" +
+	"\x04cost\x18\x02 \x01(\x05R\x04cost\"\x97\x01\n" +
 	"\x16CheckRateLimitResponse\x12*\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x12.ratecap.v1.ActionR\x06action\x12$\n" +
-	"\x0eretry_after_ms\x18\x02 \x01(\x03R\fretryAfterMs*C\n" +
+	"\x0eretry_after_ms\x18\x02 \x01(\x03R\fretryAfterMs\x12+\n" +
+	"\x11concurrency_token\x18\x03 \x01(\tR\x10concurrencyToken\"Z\n" +
+	"\x19ReleaseConcurrencyRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
+	"\x11concurrency_token\x18\x02 \x01(\tR\x10concurrencyToken\"\x1c\n" +
+	"\x1aReleaseConcurrencyResponse*C\n" +
 	"\x06Action\x12\t\n" +
 	"\x05ALLOW\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -196,9 +297,10 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\n" +
 	"REJECT_503\x10\x02\x12\x0e\n" +
 	"\n" +
-	"SHADOW_LOG\x10\x032i\n" +
+	"SHADOW_LOG\x10\x032\xce\x01\n" +
 	"\x0eRatecapService\x12W\n" +
-	"\x0eCheckRateLimit\x12!.ratecap.v1.CheckRateLimitRequest\x1a\".ratecap.v1.CheckRateLimitResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
+	"\x0eCheckRateLimit\x12!.ratecap.v1.CheckRateLimitRequest\x1a\".ratecap.v1.CheckRateLimitResponse\x12c\n" +
+	"\x12ReleaseConcurrency\x12%.ratecap.v1.ReleaseConcurrencyRequest\x1a&.ratecap.v1.ReleaseConcurrencyResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
 
 var (
 	file_ratecap_v1_ratecap_proto_rawDescOnce sync.Once
@@ -213,18 +315,22 @@ func file_ratecap_v1_ratecap_proto_rawDescGZIP() []byte {
 }
 
 var file_ratecap_v1_ratecap_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_ratecap_v1_ratecap_proto_goTypes = []any{
-	(Action)(0),                    // 0: ratecap.v1.Action
-	(*CheckRateLimitRequest)(nil),  // 1: ratecap.v1.CheckRateLimitRequest
-	(*CheckRateLimitResponse)(nil), // 2: ratecap.v1.CheckRateLimitResponse
+	(Action)(0),                        // 0: ratecap.v1.Action
+	(*CheckRateLimitRequest)(nil),      // 1: ratecap.v1.CheckRateLimitRequest
+	(*CheckRateLimitResponse)(nil),     // 2: ratecap.v1.CheckRateLimitResponse
+	(*ReleaseConcurrencyRequest)(nil),  // 3: ratecap.v1.ReleaseConcurrencyRequest
+	(*ReleaseConcurrencyResponse)(nil), // 4: ratecap.v1.ReleaseConcurrencyResponse
 }
 var file_ratecap_v1_ratecap_proto_depIdxs = []int32{
 	0, // 0: ratecap.v1.CheckRateLimitResponse.action:type_name -> ratecap.v1.Action
 	1, // 1: ratecap.v1.RatecapService.CheckRateLimit:input_type -> ratecap.v1.CheckRateLimitRequest
-	2, // 2: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
+	3, // 2: ratecap.v1.RatecapService.ReleaseConcurrency:input_type -> ratecap.v1.ReleaseConcurrencyRequest
+	2, // 3: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
+	4, // 4: ratecap.v1.RatecapService.ReleaseConcurrency:output_type -> ratecap.v1.ReleaseConcurrencyResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -241,7 +347,7 @@ func file_ratecap_v1_ratecap_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ratecap_v1_ratecap_proto_rawDesc), len(file_ratecap_v1_ratecap_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
