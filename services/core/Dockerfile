@@ -1,10 +1,10 @@
 FROM golang:1.26-alpine AS build
 WORKDIR /src
-COPY go.work go.work.sum ./
 COPY proto/ proto/
 COPY services/core/ services/core/
+RUN printf 'go 1.26.2\n\nuse ./proto\nuse ./services/core\n' > go.work
 WORKDIR /src/services/core
-RUN GOWORK=off go build -o /ratecap-core .
+RUN go build -o /ratecap-core .
 
 FROM alpine:3.20
 COPY --from=build /ratecap-core /usr/local/bin/ratecap-core

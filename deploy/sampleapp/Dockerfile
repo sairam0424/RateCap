@@ -1,10 +1,10 @@
 FROM golang:1.26-alpine AS build
 WORKDIR /src
-COPY go.work go.work.sum ./
 COPY packages/ packages/
 COPY deploy/sampleapp/ deploy/sampleapp/
+RUN printf 'go 1.26.2\n\nuse ./packages/sdks/go\nuse ./deploy/sampleapp\n' > go.work
 WORKDIR /src/deploy/sampleapp
-RUN GOWORK=off go build -o /sampleapp .
+RUN go build -o /sampleapp .
 
 FROM alpine:3.20
 COPY --from=build /sampleapp /usr/local/bin/sampleapp
