@@ -14,6 +14,7 @@ const (
 type Decision struct {
 	Action       Action
 	RetryAfterMs int64
+	Token        string
 }
 
 type Request struct {
