@@ -2,6 +2,7 @@ package ratecap
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -70,6 +71,10 @@ func (t *Ticket) Release(ctx context.Context) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ratecap: release failed with status %d", resp.StatusCode)
+	}
 
 	return nil
 }

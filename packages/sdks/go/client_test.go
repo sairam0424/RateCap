@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	ratecap "github.com/ratecap/sdk-go"
@@ -99,14 +100,14 @@ func TestAcquire_ReturnsRejectedTicketWithRetryAfterOn429(t *testing.T) {
 }
 
 func TestTicket_Release_CallsReleaseEndpointWithKeyAndToken(t *testing.T) {
-	var capturedPath string
+	var capturedQuery url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/check":
 			w.Header().Set("Concurrency-Token", "tok-abc")
 			w.WriteHeader(http.StatusOK)
 		case "/release":
-			capturedPath = r.URL.RequestURI()
+			capturedQuery = r.URL.Query()
 			w.WriteHeader(http.StatusOK)
 		}
 	}))
@@ -122,8 +123,37 @@ func TestTicket_Release_CallsReleaseEndpointWithKeyAndToken(t *testing.T) {
 		t.Fatalf("unexpected error releasing: %v", err)
 	}
 
-	if capturedPath == "" {
+	if capturedQuery == nil {
 		t.Fatal("expected /release to be called")
+	}
+	if got := capturedQuery.Get("key"); got != "user-1" {
+		t.Errorf("expected key=user-1, got %q", got)
+	}
+	if got := capturedQuery.Get("token"); got != "tok-abc" {
+		t.Errorf("expected token=tok-abc, got %q", got)
+	}
+}
+
+func TestTicket_Release_ReturnsErrorOnNon200FromSidecar(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/check":
+			w.Header().Set("Concurrency-Token", "tok-abc")
+			w.WriteHeader(http.StatusOK)
+		case "/release":
+			http.Error(w, "upstream release failed", http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	ticket, err := client.Acquire(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := ticket.Release(context.Background()); err == nil {
+		t.Fatal("expected error when sidecar returns non-200 from /release")
 	}
 }
 
