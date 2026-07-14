@@ -201,6 +201,35 @@ func TestIncrConcurrent_ReapsStaleEntriesPastMaxDuration(t *testing.T) {
 	}
 }
 
+func TestCheckAndDecrementAndIncrConcurrent_SameKeyDoNotCollide(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client)
+	ctx := context.Background()
+
+	allowed, _, err := s.CheckAndDecrement(ctx, "shared-user", 10, 5, 1)
+	if err != nil {
+		t.Fatalf("unexpected error from CheckAndDecrement: %v", err)
+	}
+	if !allowed {
+		t.Fatal("expected CheckAndDecrement to allow within burst")
+	}
+
+	allowed, token, err := s.IncrConcurrent(ctx, "shared-user", 3, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error from IncrConcurrent on a key already used by CheckAndDecrement: %v", err)
+	}
+	if !allowed {
+		t.Fatal("expected IncrConcurrent to allow within cap")
+	}
+	if token == "" {
+		t.Fatal("expected non-empty token")
+	}
+
+	if err := s.DecrConcurrent(ctx, "shared-user", token); err != nil {
+		t.Fatalf("unexpected error from DecrConcurrent: %v", err)
+	}
+}
+
 func TestIncrConcurrent_ConcurrentAtomicity(t *testing.T) {
 	client := startRedis(t)
 	s := store.NewRedisStore(client)

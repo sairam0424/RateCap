@@ -32,7 +32,16 @@ func NewRedisStore(client *redis.Client) *RedisStore {
 	}
 }
 
+// rateLimiterKeyPrefix and concurrencyKeyPrefix keep the two tiers' Redis
+// keys disjoint. Both tiers key off the same caller-supplied req.Key (e.g.
+// Pipeline checks Tier 1 then Tier 2 for one request), but they store
+// different Redis types (hash vs sorted set) — without a prefix, a shared
+// key errors with WRONGTYPE the moment both tiers touch it.
+const rateLimiterKeyPrefix = "rl:"
+const concurrencyKeyPrefix = "cc:"
+
 func (s *RedisStore) CheckAndDecrement(ctx context.Context, key string, rate, burst, cost int) (bool, int64, error) {
+	key = rateLimiterKeyPrefix + key
 	now := time.Now().UnixMilli()
 	result, err := s.tokenBucket.Run(ctx, s.client, []string{key}, rate, burst, cost, now).Slice()
 	if err != nil {
@@ -54,6 +63,7 @@ func (s *RedisStore) CheckAndDecrement(ctx context.Context, key string, rate, bu
 }
 
 func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, maxDurationMs int64) (bool, string, error) {
+	key = concurrencyKeyPrefix + key
 	now := time.Now().UnixMilli()
 	candidateToken := uuid.NewString()
 
@@ -77,5 +87,5 @@ func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, ma
 }
 
 func (s *RedisStore) DecrConcurrent(ctx context.Context, key, token string) error {
-	return s.client.ZRem(ctx, key, token).Err()
+	return s.client.ZRem(ctx, concurrencyKeyPrefix+key, token).Err()
 }
