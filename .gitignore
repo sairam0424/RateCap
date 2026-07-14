@@ -2,3 +2,4 @@
 /services/core/core
 /services/sidecar/sidecar
 *.test
+.claude/
