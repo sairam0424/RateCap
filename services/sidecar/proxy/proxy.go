@@ -46,8 +46,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if resp.ConcurrencyToken != "" {
-		w.Header().Set("Concurrency-Token", resp.ConcurrencyToken)
+	if len(resp.Reservations) > 0 {
+		w.Header().Set("Concurrency-Token", resp.Reservations[0].Token)
+		w.Header().Set("Concurrency-Key", resp.Reservations[0].Key)
 	}
 
 	action := resp.Action

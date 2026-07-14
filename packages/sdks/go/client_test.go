@@ -135,12 +135,13 @@ func TestAcquire_ReturnsRejectedTicketWithRetryAfterOn429(t *testing.T) {
 	}
 }
 
-func TestTicket_Release_CallsReleaseEndpointWithKeyAndToken(t *testing.T) {
+func TestTicket_Release_UsesServerSuppliedConcurrencyKeyNotCallerKey(t *testing.T) {
 	var capturedQuery url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/check":
 			w.Header().Set("Concurrency-Token", "tok-abc")
+			w.Header().Set("Concurrency-Key", "server-assigned-key")
 			w.WriteHeader(http.StatusOK)
 		case "/release":
 			capturedQuery = r.URL.Query()
@@ -150,7 +151,7 @@ func TestTicket_Release_CallsReleaseEndpointWithKeyAndToken(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	ticket, err := client.Acquire(context.Background(), "user-1")
+	ticket, err := client.Acquire(context.Background(), "caller-supplied-key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,8 +163,8 @@ func TestTicket_Release_CallsReleaseEndpointWithKeyAndToken(t *testing.T) {
 	if capturedQuery == nil {
 		t.Fatal("expected /release to be called")
 	}
-	if got := capturedQuery.Get("key"); got != "user-1" {
-		t.Errorf("expected key=user-1, got %q", got)
+	if got := capturedQuery.Get("key"); got != "server-assigned-key" {
+		t.Errorf("expected key=server-assigned-key (from Concurrency-Key header, not the caller's Acquire key), got %q", got)
 	}
 	if got := capturedQuery.Get("token"); got != "tok-abc" {
 		t.Errorf("expected token=tok-abc, got %q", got)

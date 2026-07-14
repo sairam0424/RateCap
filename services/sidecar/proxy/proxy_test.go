@@ -85,8 +85,11 @@ func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
 	}
 }
 
-func TestServeHTTP_SetsConcurrencyTokenHeaderWhenPresent(t *testing.T) {
-	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW, ConcurrencyToken: "tok-abc"}}
+func TestServeHTTP_SetsConcurrencyTokenAndKeyHeadersWhenReservationPresent(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{
+		Action:       ratecapv1.Action_ALLOW,
+		Reservations: []*ratecapv1.TokenReservation{{Key: "user-1", Token: "tok-abc"}},
+	}}
 	h := proxy.NewHandler(client, proxy.Sheddable)
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
@@ -97,10 +100,13 @@ func TestServeHTTP_SetsConcurrencyTokenHeaderWhenPresent(t *testing.T) {
 	if rec.Header().Get("Concurrency-Token") != "tok-abc" {
 		t.Errorf("expected Concurrency-Token header %q, got %q", "tok-abc", rec.Header().Get("Concurrency-Token"))
 	}
+	if rec.Header().Get("Concurrency-Key") != "user-1" {
+		t.Errorf("expected Concurrency-Key header %q, got %q", "user-1", rec.Header().Get("Concurrency-Key"))
+	}
 }
 
-func TestServeHTTP_OmitsConcurrencyTokenHeaderWhenEmpty(t *testing.T) {
-	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW, ConcurrencyToken: ""}}
+func TestServeHTTP_OmitsConcurrencyHeadersWhenNoReservations(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	h := proxy.NewHandler(client, proxy.Sheddable)
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
@@ -110,6 +116,9 @@ func TestServeHTTP_OmitsConcurrencyTokenHeaderWhenEmpty(t *testing.T) {
 
 	if rec.Header().Get("Concurrency-Token") != "" {
 		t.Errorf("expected no Concurrency-Token header, got %q", rec.Header().Get("Concurrency-Token"))
+	}
+	if rec.Header().Get("Concurrency-Key") != "" {
+		t.Errorf("expected no Concurrency-Key header, got %q", rec.Header().Get("Concurrency-Key"))
 	}
 }
 

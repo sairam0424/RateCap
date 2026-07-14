@@ -102,14 +102,15 @@ func (c *Client) Acquire(ctx context.Context, key string) (*Ticket, error) {
 	defer resp.Body.Close()
 
 	concurrencyTok := resp.Header.Get("Concurrency-Token")
+	concurrencyKey := resp.Header.Get("Concurrency-Key")
 
 	if resp.StatusCode == http.StatusOK {
-		return &Ticket{Allowed: true, client: c, key: key, tok: concurrencyTok}, nil
+		return &Ticket{Allowed: true, client: c, key: concurrencyKey, tok: concurrencyTok}, nil
 	}
 
 	var retryAfterMs int64
 	if v := resp.Header.Get("Retry-After-Ms"); v != "" {
 		retryAfterMs, _ = strconv.ParseInt(v, 10, 64)
 	}
-	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, client: c, key: key, tok: concurrencyTok}, nil
+	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, client: c, key: concurrencyKey, tok: concurrencyTok}, nil
 }
