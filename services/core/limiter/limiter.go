@@ -11,14 +11,21 @@ const (
 	SHADOW_LOG
 )
 
+type TokenReservation struct {
+	Key   string
+	Token string
+}
+
 type Decision struct {
 	Action       Action
 	RetryAfterMs int64
+	Reservations []TokenReservation
 }
 
 type Request struct {
-	Key  string
-	Cost int
+	Key                  string
+	Cost                 int
+	SkipConcurrencyLimit bool
 }
 
 type Limiter interface {

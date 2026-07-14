@@ -13,10 +13,17 @@ type RateLimiterConfig struct {
 	ShadowMode   bool `yaml:"shadow_mode"`
 }
 
+type ConcurrencyLimiterConfig struct {
+	DefaultMaxConcurrent int   `yaml:"default_max_concurrent"`
+	MaxRequestDurationMs int64 `yaml:"max_request_duration_ms"`
+	ShadowMode           bool  `yaml:"shadow_mode"`
+}
+
 type Config struct {
 	SyncRate int `yaml:"sync_rate"`
 	Tiers    struct {
-		RateLimiter RateLimiterConfig `yaml:"rate_limiter"`
+		RateLimiter        RateLimiterConfig        `yaml:"rate_limiter"`
+		ConcurrencyLimiter ConcurrencyLimiterConfig `yaml:"concurrency_limiter"`
 	} `yaml:"tiers"`
 }
 

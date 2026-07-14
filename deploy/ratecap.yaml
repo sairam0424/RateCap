@@ -4,3 +4,7 @@ tiers:
     default_rate: 2
     default_burst: 5
     shadow_mode: false
+  concurrency_limiter:
+    default_max_concurrent: 3
+    max_request_duration_ms: 30000
+    shadow_mode: false

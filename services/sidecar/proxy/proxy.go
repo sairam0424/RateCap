@@ -26,6 +26,11 @@ func NewHandler(client ratecapClient, defaultPriority Priority) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	key := r.URL.Query().Get("key")
 	if key == "" {
 		http.Error(w, "missing key parameter", http.StatusBadRequest)
@@ -34,10 +39,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_ = ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
 
-	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{Key: key, Cost: 1})
+	skipConcurrency := r.URL.Query().Get("skip_concurrency") == "true"
+
+	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{
+		Key:                  key,
+		Cost:                 1,
+		SkipConcurrencyLimit: skipConcurrency,
+	})
 	if err != nil {
 		http.Error(w, "upstream check failed", http.StatusInternalServerError)
 		return
+	}
+
+	if len(resp.Reservations) > 0 {
+		w.Header().Set("Concurrency-Token", resp.Reservations[0].Token)
+		w.Header().Set("Concurrency-Key", resp.Reservations[0].Key)
 	}
 
 	action := resp.Action
@@ -54,4 +70,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case ratecapv1.Action_REJECT_503:
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
+}
+
+type releaseClient interface {
+	ReleaseConcurrency(ctx context.Context, in *ratecapv1.ReleaseConcurrencyRequest, opts ...grpc.CallOption) (*ratecapv1.ReleaseConcurrencyResponse, error)
+}
+
+type ReleaseHandler struct {
+	client releaseClient
+}
+
+func NewReleaseHandler(client releaseClient) *ReleaseHandler {
+	return &ReleaseHandler{client: client}
+}
+
+func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		http.Error(w, "missing key parameter", http.StatusBadRequest)
+		return
+	}
+	token := r.URL.Query().Get("token")
+
+	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
+	if err != nil {
+		http.Error(w, "upstream release failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

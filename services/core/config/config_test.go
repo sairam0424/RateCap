@@ -52,3 +52,33 @@ func TestLoad_MissingFileReturnsError(t *testing.T) {
 		t.Fatal("expected error for missing file, got nil")
 	}
 }
+
+func TestLoad_ParsesConcurrencyLimiterTier(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+  concurrency_limiter:
+    default_max_concurrent: 20
+    max_request_duration_ms: 30000
+    shadow_mode: false
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent != 20 {
+		t.Errorf("expected DefaultMaxConcurrent=20, got %d", cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent)
+	}
+	if cfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs != 30000 {
+		t.Errorf("expected MaxRequestDurationMs=30000, got %d", cfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs)
+	}
+	if cfg.Tiers.ConcurrencyLimiter.ShadowMode != false {
+		t.Errorf("expected ShadowMode=false, got %v", cfg.Tiers.ConcurrencyLimiter.ShadowMode)
+	}
+}
