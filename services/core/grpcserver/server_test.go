@@ -3,7 +3,11 @@ package grpcserver_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
@@ -121,6 +125,25 @@ func TestCheckRateLimit_PropagatesSkipConcurrencyLimitToPipeline(t *testing.T) {
 	}
 }
 
+func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
+	fl := &fakeLimiter{err: errors.New("redis: unexpected type *redis.StatusCmd for result")}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:  "user-1",
+		Cost: 1,
+	})
+	if err == nil {
+		t.Fatal("expected error to propagate")
+	}
+	if status.Code(err) != codes.Internal {
+		t.Errorf("expected codes.Internal, got %v", status.Code(err))
+	}
+	if strings.Contains(err.Error(), "StatusCmd") {
+		t.Errorf("expected sanitized error, but original error text leaked: %v", err)
+	}
+}
+
 func TestReleaseConcurrency_CallsDecrConcurrentWithKeyAndToken(t *testing.T) {
 	releaser := &fakeReleaser{}
 	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser)
@@ -140,8 +163,8 @@ func TestReleaseConcurrency_CallsDecrConcurrentWithKeyAndToken(t *testing.T) {
 	}
 }
 
-func TestReleaseConcurrency_PropagatesStoreError(t *testing.T) {
-	releaser := &fakeReleaser{err: errors.New("redis unavailable")}
+func TestReleaseConcurrency_SanitizesStoreErrorButPropagatesFailure(t *testing.T) {
+	releaser := &fakeReleaser{err: errors.New("dial tcp 10.0.0.5:6379: connect: connection refused")}
 	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser)
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
@@ -150,5 +173,11 @@ func TestReleaseConcurrency_PropagatesStoreError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error to propagate")
+	}
+	if status.Code(err) != codes.Internal {
+		t.Errorf("expected codes.Internal, got %v", status.Code(err))
+	}
+	if strings.Contains(err.Error(), "10.0.0.5") || strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("expected sanitized error, but original error text leaked: %v", err)
 	}
 }

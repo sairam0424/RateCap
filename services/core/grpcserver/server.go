@@ -2,6 +2,10 @@ package grpcserver
 
 import (
 	"context"
+	"log"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
@@ -33,7 +37,7 @@ func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLim
 		SkipConcurrencyLimit: req.SkipConcurrencyLimit,
 	})
 	if err != nil {
-		return nil, err
+		return nil, internalError("CheckRateLimit", err)
 	}
 
 	reservations := make([]*ratecapv1.TokenReservation, 0, len(decision.Reservations))
@@ -50,9 +54,14 @@ func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLim
 
 func (s *Server) ReleaseConcurrency(ctx context.Context, req *ratecapv1.ReleaseConcurrencyRequest) (*ratecapv1.ReleaseConcurrencyResponse, error) {
 	if err := s.releaser.DecrConcurrent(ctx, req.Key, req.ConcurrencyToken); err != nil {
-		return nil, err
+		return nil, internalError("ReleaseConcurrency", err)
 	}
 	return &ratecapv1.ReleaseConcurrencyResponse{}, nil
+}
+
+func internalError(context string, err error) error {
+	log.Printf("grpcserver: %s: %v", context, err)
+	return status.Error(codes.Internal, "internal error")
 }
 
 func toProtoAction(a limiter.Action) ratecapv1.Action {
