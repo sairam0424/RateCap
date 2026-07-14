@@ -19,7 +19,7 @@ App (any language) -> RateCap SDK (thin client) -> ratecap-sidecar (local, per-h
 ```
 
 - **`ratecap-core`** (`services/core/`) — the central gRPC engine. Owns the limiter decision logic, the Redis-backed shared state, and hot-reloadable configuration. It is the single source of truth for what "the current rate limit" is at any moment.
-- **`ratecap-sidecar`** (`services/sidecar/`) — a thin, co-located proxy. Apps talk to the sidecar over plain HTTP; the sidecar forwards checks to `ratecap-core` over gRPC. This is where safe-rollout (shadow mode) and priority resolution live.
+- **`ratecap-sidecar`** (`services/sidecar/`) — a thin, co-located proxy. Apps talk to the sidecar over plain HTTP; the sidecar forwards checks to `ratecap-core` over gRPC, authenticated with a shared secret (`RATECAP_SHARED_SECRET`) but not encrypted — this hop must stay on a private network (see [`SECURITY.md`](SECURITY.md#network-transport-security-v1); TLS/mTLS is deferred to v2). This is where safe-rollout (shadow mode) and priority resolution live.
 - **SDKs** (`packages/sdks/go/`) — thin client stubs. No limiter logic is duplicated per language; every SDK is a wire-protocol client, nothing more. This avoids the drift risk that per-language reimplementations (e.g. independent token-bucket ports across Bucket4j/Guava/resilience4j) each accept.
 - **`proto/`** — the gRPC contract (`ratecap.proto`), the single source of truth every service and SDK is generated against.
 
