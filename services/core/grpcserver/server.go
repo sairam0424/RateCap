@@ -36,10 +36,15 @@ func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLim
 		return nil, err
 	}
 
+	reservations := make([]*ratecapv1.TokenReservation, 0, len(decision.Reservations))
+	for _, r := range decision.Reservations {
+		reservations = append(reservations, &ratecapv1.TokenReservation{Key: r.Key, Token: r.Token})
+	}
+
 	return &ratecapv1.CheckRateLimitResponse{
-		Action:           toProtoAction(decision.Action),
-		RetryAfterMs:     decision.RetryAfterMs,
-		ConcurrencyToken: decision.Token,
+		Action:       toProtoAction(decision.Action),
+		RetryAfterMs: decision.RetryAfterMs,
+		Reservations: reservations,
 	}, nil
 }
 

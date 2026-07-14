@@ -69,8 +69,8 @@ func TestCheckRateLimit_ReturnsReject429WithRetryAfter(t *testing.T) {
 	}
 }
 
-func TestCheckRateLimit_ReturnsConcurrencyTokenWhenPresent(t *testing.T) {
-	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Token: "tok-abc"}}
+func TestCheckRateLimit_ReturnsReservationsWhenPresent(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Reservations: []limiter.TokenReservation{{Key: "user-1", Token: "tok-abc"}}}}
 	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
@@ -80,8 +80,27 @@ func TestCheckRateLimit_ReturnsConcurrencyTokenWhenPresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.ConcurrencyToken != "tok-abc" {
-		t.Errorf("expected ConcurrencyToken=%q, got %q", "tok-abc", resp.ConcurrencyToken)
+	if len(resp.Reservations) != 1 {
+		t.Fatalf("expected 1 reservation, got %d", len(resp.Reservations))
+	}
+	if resp.Reservations[0].Key != "user-1" || resp.Reservations[0].Token != "tok-abc" {
+		t.Fatalf("expected reservation {user-1 tok-abc}, got {%s %s}", resp.Reservations[0].Key, resp.Reservations[0].Token)
+	}
+}
+
+func TestCheckRateLimit_ReturnsNoReservationsWhenNonePresent(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:  "user-1",
+		Cost: 1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Reservations) != 0 {
+		t.Fatalf("expected 0 reservations, got %d", len(resp.Reservations))
 	}
 }
 
