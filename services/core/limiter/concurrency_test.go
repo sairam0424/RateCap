@@ -51,8 +51,11 @@ func TestConcurrencyLimiter_AllowsExactlyCapRequests(t *testing.T) {
 		if d.Action != limiter.ALLOW {
 			t.Fatalf("request %d: expected ALLOW, got %v", i, d.Action)
 		}
-		if d.Token == "" {
-			t.Fatalf("request %d: expected non-empty token", i)
+		if len(d.Reservations) != 1 || d.Reservations[0].Token == "" {
+			t.Fatalf("request %d: expected exactly one reservation with a non-empty token, got %+v", i, d.Reservations)
+		}
+		if d.Reservations[0].Key != "user-1" {
+			t.Fatalf("request %d: expected reservation key %q, got %q", i, "user-1", d.Reservations[0].Key)
 		}
 	}
 
@@ -97,8 +100,8 @@ func TestConcurrencyLimiter_ShadowModeStillReservesSlot(t *testing.T) {
 			if d.Action != limiter.SHADOW_LOG {
 				t.Fatalf("request %d: expected SHADOW_LOG, got %v", i, d.Action)
 			}
-			if d.Token == "" {
-				t.Fatalf("request %d: expected a reserved token even in shadow mode, got empty string", i)
+			if len(d.Reservations) != 1 || d.Reservations[0].Token == "" {
+				t.Fatalf("request %d: expected a reserved token even in shadow mode, got %+v", i, d.Reservations)
 			}
 		}
 	}
@@ -125,8 +128,8 @@ func TestConcurrencyLimiter_SkipConcurrencyLimitBypassesTheCapEntirely(t *testin
 		if d.Action != limiter.ALLOW {
 			t.Fatalf("request %d: expected ALLOW when SkipConcurrencyLimit is set, got %v", i, d.Action)
 		}
-		if d.Token != "" {
-			t.Fatalf("request %d: expected no token reserved when SkipConcurrencyLimit is set, got %q", i, d.Token)
+		if len(d.Reservations) != 0 {
+			t.Fatalf("request %d: expected no reservation when SkipConcurrencyLimit is set, got %+v", i, d.Reservations)
 		}
 	}
 

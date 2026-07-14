@@ -16,6 +16,11 @@ enum Action {
   SHADOW_LOG = 3;
 }
 
+message TokenReservation {
+  string key = 1;
+  string token = 2;
+}
+
 message CheckRateLimitRequest {
   string key = 1;
   int32 cost = 2;
@@ -25,7 +30,7 @@ message CheckRateLimitRequest {
 message CheckRateLimitResponse {
   Action action = 1;
   int64 retry_after_ms = 2;
-  string concurrency_token = 3;
+  repeated TokenReservation reservations = 3;
 }
 
 message ReleaseConcurrencyRequest {

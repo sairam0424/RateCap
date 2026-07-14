@@ -11,10 +11,15 @@ const (
 	SHADOW_LOG
 )
 
+type TokenReservation struct {
+	Key   string
+	Token string
+}
+
 type Decision struct {
 	Action       Action
 	RetryAfterMs int64
-	Token        string
+	Reservations []TokenReservation
 }
 
 type Request struct {

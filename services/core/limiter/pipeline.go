@@ -11,19 +11,14 @@ func NewPipeline(tiers ...Limiter) *Pipeline {
 }
 
 func (p *Pipeline) Check(ctx context.Context, req Request) (Decision, error) {
-	final := Decision{Action: ALLOW}
+	var reserved []TokenReservation
 	for _, tier := range p.tiers {
 		d, err := tier.Check(ctx, req)
+		reserved = append(reserved, d.Reservations...)
 		if err != nil || d.Action != ALLOW {
+			d.Reservations = reserved
 			return d, err
 		}
-		if d.Token != "" {
-			// Overwrites rather than accumulates: Decision.Token is a single
-			// field because only tier 2 issues one in this phase (see the
-			// design spec). A future tier that also reserves a releasable
-			// token will need this to become a slice/map instead.
-			final.Token = d.Token
-		}
 	}
-	return final, nil
+	return Decision{Action: ALLOW, Reservations: reserved}, nil
 }

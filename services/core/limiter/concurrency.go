@@ -61,7 +61,7 @@ func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, 
 	}
 
 	if allowed {
-		return Decision{Action: ALLOW, Token: token}, nil
+		return Decision{Action: ALLOW, Reservations: []TokenReservation{{Key: req.Key, Token: token}}}, nil
 	}
 
 	if shadowMode {
@@ -69,7 +69,7 @@ func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, 
 		if err != nil {
 			return Decision{}, err
 		}
-		return Decision{Action: SHADOW_LOG, Token: reservedToken}, nil
+		return Decision{Action: SHADOW_LOG, Reservations: []TokenReservation{{Key: req.Key, Token: reservedToken}}}, nil
 	}
 
 	return Decision{Action: REJECT_429}, nil
