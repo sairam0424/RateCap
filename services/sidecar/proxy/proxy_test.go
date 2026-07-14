@@ -156,6 +156,20 @@ func TestServeHTTP_NoSkipConcurrencyParamLeavesSkipConcurrencyLimitFalse(t *test
 	}
 }
 
+func TestServeHTTP_RejectsNonGETMethod(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodPost, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
 type fakeReleaseClient struct {
 	lastKey   string
 	lastToken string
@@ -213,5 +227,19 @@ func TestReleaseHandler_ServeHTTP_UpstreamErrorReturns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_RejectsNonPOSTMethod(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodGet, "/release?key=user-1&token=tok-abc", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
 	}
 }
