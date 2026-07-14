@@ -18,6 +18,10 @@ func (p *Pipeline) Check(ctx context.Context, req Request) (Decision, error) {
 			return d, err
 		}
 		if d.Token != "" {
+			// Overwrites rather than accumulates: Decision.Token is a single
+			// field because only tier 2 issues one in this phase (see the
+			// design spec). A future tier that also reserves a releasable
+			// token will need this to become a slice/map instead.
 			final.Token = d.Token
 		}
 	}

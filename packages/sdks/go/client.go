@@ -55,6 +55,10 @@ type Ticket struct {
 	tok    string
 }
 
+// Release is best-effort with no retry: a non-nil error is a signal for the
+// caller to log, not something to retry or otherwise act on — the design
+// spec's Lua reaper (max_request_duration_ms) is the actual mechanism that
+// frees a slot after a lost or failed Release, not a fallback for one.
 func (t *Ticket) Release(ctx context.Context) error {
 	if t.tok == "" {
 		return nil

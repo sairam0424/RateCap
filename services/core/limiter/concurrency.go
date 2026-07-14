@@ -6,12 +6,13 @@ import (
 	"sync"
 )
 
-// unboundedCap forces the store's IncrConcurrent to always reserve a slot
-// (ZADD unconditionally). Used only for shadow mode's would-be-reject path,
-// where the design spec requires the slot to still be reserved so
-// concurrency accounting stays accurate. MaxInt32 stays exactly
-// representable as a Lua double (unlike math.MaxInt on 64-bit), while still
-// being far larger than any real concurrency count.
+// unboundedCap is passed as the Lua script's cap argument to force its
+// `count < cap` check to always pass, so IncrConcurrent still reserves a
+// slot even when the real cap is already exceeded. Used only for shadow
+// mode's would-be-reject path, where the design spec requires the slot to
+// still be reserved so concurrency accounting stays accurate. MaxInt32 is
+// chosen to be far larger than any real concurrency count while staying
+// well under Lua 5.1's 2^53 integer-precision limit for tonumber().
 const unboundedCap = math.MaxInt32
 
 type concurrencyChecker interface {
