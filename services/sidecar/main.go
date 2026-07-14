@@ -10,6 +10,7 @@ import (
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/sidecar/auth"
 	"github.com/ratecap/sidecar/proxy"
 )
 
@@ -19,7 +20,16 @@ func main() {
 		coreAddr = "localhost:9090"
 	}
 
-	conn, err := grpc.NewClient(coreAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	sharedSecret := os.Getenv("RATECAP_SHARED_SECRET")
+	if sharedSecret == "" {
+		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-sidecar refuses to start without gRPC authentication configured")
+	}
+
+	conn, err := grpc.NewClient(
+		coreAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(auth.UnaryClientInterceptor(sharedSecret)),
+	)
 	if err != nil {
 		log.Fatalf("failed to connect to ratecap-core at %s: %v", coreAddr, err)
 	}

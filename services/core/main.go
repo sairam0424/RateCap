@@ -10,6 +10,7 @@ import (
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/core/auth"
 	"github.com/ratecap/core/config"
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
@@ -30,6 +31,11 @@ func main() {
 	redisAddr := os.Getenv("RATECAP_REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
+	}
+
+	sharedSecret := os.Getenv("RATECAP_SHARED_SECRET")
+	if sharedSecret == "" {
+		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-core refuses to start without gRPC authentication configured")
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
@@ -70,7 +76,7 @@ func main() {
 		log.Fatalf("failed to listen on %s: %v", listenAddr, err)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret)))
 	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore))
 
 	log.Printf("ratecap-core listening on %s", listenAddr)
