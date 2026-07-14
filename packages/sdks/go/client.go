@@ -17,8 +17,12 @@ func NewClient(sidecarAddr string) *Client {
 	return &Client{sidecarAddr: sidecarAddr, httpClient: http.DefaultClient}
 }
 
+// Allow is tier-1-only: it never establishes a tier-2 concurrency
+// reservation, since it has no matching Release call to free one. Skipping
+// tier 2 here (rather than leaking a slot per call) is what keeps Allow's
+// original fire-and-forget contract intact now that tier 2 exists.
 func (c *Client) Allow(ctx context.Context, key string) (allowed bool, retryAfterMs int64, err error) {
-	reqURL := c.sidecarAddr + "/check?key=" + url.QueryEscape(key)
+	reqURL := c.sidecarAddr + "/check?key=" + url.QueryEscape(key) + "&skip_concurrency=true"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {

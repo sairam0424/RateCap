@@ -46,6 +46,10 @@ func (l *ConcurrencyLimiter) Reconfigure(cap int, maxDurationMs int64, shadowMod
 }
 
 func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, error) {
+	if req.SkipConcurrencyLimit {
+		return Decision{Action: ALLOW}, nil
+	}
+
 	l.mu.RLock()
 	cap, maxDurationMs, shadowMode := l.cap, l.maxDurationMs, l.shadowMode
 	l.mu.RUnlock()

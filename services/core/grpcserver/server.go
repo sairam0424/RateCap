@@ -27,7 +27,11 @@ func NewServer(p checker, releaser concurrencyReleaser) *Server {
 }
 
 func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLimitRequest) (*ratecapv1.CheckRateLimitResponse, error) {
-	decision, err := s.pipeline.Check(ctx, limiter.Request{Key: req.Key, Cost: int(req.Cost)})
+	decision, err := s.pipeline.Check(ctx, limiter.Request{
+		Key:                  req.Key,
+		Cost:                 int(req.Cost),
+		SkipConcurrencyLimit: req.SkipConcurrencyLimit,
+	})
 	if err != nil {
 		return nil, err
 	}

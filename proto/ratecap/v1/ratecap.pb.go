@@ -74,11 +74,12 @@ func (Action) EnumDescriptor() ([]byte, []int) {
 }
 
 type CheckRateLimitRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Cost          int32                  `protobuf:"varint,2,opt,name=cost,proto3" json:"cost,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Key                  string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Cost                 int32                  `protobuf:"varint,2,opt,name=cost,proto3" json:"cost,omitempty"`
+	SkipConcurrencyLimit bool                   `protobuf:"varint,3,opt,name=skip_concurrency_limit,json=skipConcurrencyLimit,proto3" json:"skip_concurrency_limit,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *CheckRateLimitRequest) Reset() {
@@ -123,6 +124,13 @@ func (x *CheckRateLimitRequest) GetCost() int32 {
 		return x.Cost
 	}
 	return 0
+}
+
+func (x *CheckRateLimitRequest) GetSkipConcurrencyLimit() bool {
+	if x != nil {
+		return x.SkipConcurrencyLimit
+	}
+	return false
 }
 
 type CheckRateLimitResponse struct {
@@ -278,10 +286,11 @@ var File_ratecap_v1_ratecap_proto protoreflect.FileDescriptor
 const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\n" +
 	"\x18ratecap/v1/ratecap.proto\x12\n" +
-	"ratecap.v1\"=\n" +
+	"ratecap.v1\"s\n" +
 	"\x15CheckRateLimitRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
-	"\x04cost\x18\x02 \x01(\x05R\x04cost\"\x97\x01\n" +
+	"\x04cost\x18\x02 \x01(\x05R\x04cost\x124\n" +
+	"\x16skip_concurrency_limit\x18\x03 \x01(\bR\x14skipConcurrencyLimit\"\x97\x01\n" +
 	"\x16CheckRateLimitResponse\x12*\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x12.ratecap.v1.ActionR\x06action\x12$\n" +
 	"\x0eretry_after_ms\x18\x02 \x01(\x03R\fretryAfterMs\x12+\n" +

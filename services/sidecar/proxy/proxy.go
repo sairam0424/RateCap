@@ -34,7 +34,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_ = ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
 
-	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{Key: key, Cost: 1})
+	skipConcurrency := r.URL.Query().Get("skip_concurrency") == "true"
+
+	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{
+		Key:                  key,
+		Cost:                 1,
+		SkipConcurrencyLimit: skipConcurrency,
+	})
 	if err != nil {
 		http.Error(w, "upstream check failed", http.StatusInternalServerError)
 		return

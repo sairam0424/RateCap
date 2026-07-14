@@ -18,8 +18,9 @@ type Decision struct {
 }
 
 type Request struct {
-	Key  string
-	Cost int
+	Key                  string
+	Cost                 int
+	SkipConcurrencyLimit bool
 }
 
 type Limiter interface {

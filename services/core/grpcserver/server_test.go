@@ -14,9 +14,11 @@ import (
 type fakeLimiter struct {
 	decision limiter.Decision
 	err      error
+	lastReq  limiter.Request
 }
 
-func (f *fakeLimiter) Check(_ context.Context, _ limiter.Request) (limiter.Decision, error) {
+func (f *fakeLimiter) Check(_ context.Context, req limiter.Request) (limiter.Decision, error) {
+	f.lastReq = req
 	return f.decision, f.err
 }
 
@@ -80,6 +82,23 @@ func TestCheckRateLimit_ReturnsConcurrencyTokenWhenPresent(t *testing.T) {
 	}
 	if resp.ConcurrencyToken != "tok-abc" {
 		t.Errorf("expected ConcurrencyToken=%q, got %q", "tok-abc", resp.ConcurrencyToken)
+	}
+}
+
+func TestCheckRateLimit_PropagatesSkipConcurrencyLimitToPipeline(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:                  "user-1",
+		Cost:                 1,
+		SkipConcurrencyLimit: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fl.lastReq.SkipConcurrencyLimit {
+		t.Error("expected SkipConcurrencyLimit=true to propagate into limiter.Request")
 	}
 }
 

@@ -62,6 +62,42 @@ func TestAllow_ReturnsFalseOn503(t *testing.T) {
 	}
 }
 
+func TestAllow_RequestsSkipConcurrencyLimit(t *testing.T) {
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := capturedQuery.Get("skip_concurrency"); got != "true" {
+		t.Errorf("expected skip_concurrency=true on Allow()'s /check request, got %q", got)
+	}
+}
+
+func TestAcquire_DoesNotRequestSkipConcurrencyLimit(t *testing.T) {
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, err := client.Acquire(context.Background(), "user-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := capturedQuery.Get("skip_concurrency"); got != "" {
+		t.Errorf("expected no skip_concurrency param on Acquire()'s /check request, got %q", got)
+	}
+}
+
 func TestAcquire_ReturnsAllowedTicketOn200(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Concurrency-Token", "tok-abc")

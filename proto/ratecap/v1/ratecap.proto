@@ -19,6 +19,7 @@ enum Action {
 message CheckRateLimitRequest {
   string key = 1;
   int32 cost = 2;
+  bool skip_concurrency_limit = 3;
 }
 
 message CheckRateLimitResponse {

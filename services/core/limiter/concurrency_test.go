@@ -112,6 +112,33 @@ func TestConcurrencyLimiter_ShadowModeStillReservesSlot(t *testing.T) {
 	}
 }
 
+func TestConcurrencyLimiter_SkipConcurrencyLimitBypassesTheCapEntirely(t *testing.T) {
+	fs := newFakeConcurrencyStore()
+	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		d, err := l.Check(ctx, limiter.Request{Key: "user-skip", SkipConcurrencyLimit: true})
+		if err != nil {
+			t.Fatalf("unexpected error on request %d: %v", i, err)
+		}
+		if d.Action != limiter.ALLOW {
+			t.Fatalf("request %d: expected ALLOW when SkipConcurrencyLimit is set, got %v", i, d.Action)
+		}
+		if d.Token != "" {
+			t.Fatalf("request %d: expected no token reserved when SkipConcurrencyLimit is set, got %q", i, d.Token)
+		}
+	}
+
+	fs.mu.Lock()
+	count := fs.tokens["user-skip"]
+	fs.mu.Unlock()
+
+	if count != 0 {
+		t.Fatalf("expected the store to never be touched when SkipConcurrencyLimit is set, got tracked count %d, want 0", count)
+	}
+}
+
 func TestConcurrencyLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T) {
 	fs := newFakeConcurrencyStore()
 	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false)

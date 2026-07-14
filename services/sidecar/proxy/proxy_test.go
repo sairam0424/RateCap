@@ -15,11 +15,13 @@ import (
 )
 
 type fakeRatecapClient struct {
-	resp *ratecapv1.CheckRateLimitResponse
-	err  error
+	resp    *ratecapv1.CheckRateLimitResponse
+	err     error
+	lastReq *ratecapv1.CheckRateLimitRequest
 }
 
-func (f *fakeRatecapClient) CheckRateLimit(_ context.Context, _ *ratecapv1.CheckRateLimitRequest, _ ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error) {
+func (f *fakeRatecapClient) CheckRateLimit(_ context.Context, in *ratecapv1.CheckRateLimitRequest, _ ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error) {
+	f.lastReq = in
 	return f.resp, f.err
 }
 
@@ -108,6 +110,40 @@ func TestServeHTTP_OmitsConcurrencyTokenHeaderWhenEmpty(t *testing.T) {
 
 	if rec.Header().Get("Concurrency-Token") != "" {
 		t.Errorf("expected no Concurrency-Token header, got %q", rec.Header().Get("Concurrency-Token"))
+	}
+}
+
+func TestServeHTTP_SkipConcurrencyParamSetsSkipConcurrencyLimitOnRequest(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&skip_concurrency=true", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if !client.lastReq.SkipConcurrencyLimit {
+		t.Error("expected SkipConcurrencyLimit=true when skip_concurrency=true query param is set")
+	}
+}
+
+func TestServeHTTP_NoSkipConcurrencyParamLeavesSkipConcurrencyLimitFalse(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.SkipConcurrencyLimit {
+		t.Error("expected SkipConcurrencyLimit=false when skip_concurrency param is absent")
 	}
 }
 
