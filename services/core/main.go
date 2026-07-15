@@ -10,6 +10,7 @@ import (
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/core/auth"
 	"github.com/ratecap/core/config"
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
@@ -26,10 +27,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid config: %v", err)
+	}
 
 	redisAddr := os.Getenv("RATECAP_REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
+	}
+
+	sharedSecret := os.Getenv("RATECAP_SHARED_SECRET")
+	if sharedSecret == "" {
+		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-core refuses to start without gRPC authentication configured")
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
@@ -42,8 +51,31 @@ func main() {
 		cfg.Tiers.RateLimiter.ShadowMode,
 	)
 
+	concurrencyLimiter := limiter.NewConcurrencyLimiter(
+		redisStore,
+		cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent,
+		cfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs,
+		cfg.Tiers.ConcurrencyLimiter.ShadowMode,
+	)
+
+	fleetShedder := limiter.NewFleetShedder(
+		redisStore,
+		cfg.Tiers.FleetShedder.DefaultMaxConcurrent,
+		cfg.Tiers.FleetShedder.ReservedCriticalPct,
+		cfg.Tiers.FleetShedder.MaxRequestDurationMs,
+		cfg.Tiers.FleetShedder.ShadowMode,
+	)
+
+	pipeline := limiter.NewPipeline(rateLimiter, concurrencyLimiter, fleetShedder)
+
 	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config) {
+		if err := newCfg.Validate(); err != nil {
+			log.Printf("ignoring invalid config reload: %v", err)
+			return
+		}
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
+		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode)
+		fleetShedder.Reconfigure(newCfg.Tiers.FleetShedder.DefaultMaxConcurrent, newCfg.Tiers.FleetShedder.ReservedCriticalPct, newCfg.Tiers.FleetShedder.MaxRequestDurationMs, newCfg.Tiers.FleetShedder.ShadowMode)
 	})
 	if err != nil {
 		log.Fatalf("failed to start config watcher: %v", err)
@@ -60,8 +92,8 @@ func main() {
 		log.Fatalf("failed to listen on %s: %v", listenAddr, err)
 	}
 
-	grpcServer := grpc.NewServer()
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(rateLimiter))
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret)))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore))
 
 	log.Printf("ratecap-core listening on %s", listenAddr)
 	if err := grpcServer.Serve(lis); err != nil {

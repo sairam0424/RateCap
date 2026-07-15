@@ -12,6 +12,10 @@ services:
       RATECAP_CONFIG_PATH: /etc/ratecap/ratecap.yaml
       RATECAP_REDIS_ADDR: redis:6379
       RATECAP_GRPC_ADDR: :9090
+      # Demo-only value — real deployments must inject this via proper secrets
+      # management (e.g. a mounted secret file or orchestrator-native secret),
+      # never a value committed to a compose file.
+      RATECAP_SHARED_SECRET: demo-shared-secret-do-not-use-in-production
     volumes:
       - ./ratecap.yaml:/etc/ratecap/ratecap.yaml
     depends_on:
@@ -26,6 +30,8 @@ services:
     environment:
       RATECAP_CORE_ADDR: core:9090
       RATECAP_SIDECAR_ADDR: :8080
+      RATECAP_SHARED_SECRET: demo-shared-secret-do-not-use-in-production
+      RATECAP_MAX_INFLIGHT_REQUESTS: "3"
     depends_on:
       - core
     ports:
