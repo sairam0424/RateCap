@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
 	"github.com/ratecap/sidecar/shadow"
+	"github.com/ratecap/sidecar/worker"
 )
 
 type ratecapClient interface {
@@ -20,16 +22,27 @@ type ratecapClient interface {
 type Handler struct {
 	client          ratecapClient
 	defaultPriority Priority
+	shedder         *worker.Shedder
 }
 
-func NewHandler(client ratecapClient, defaultPriority Priority) *Handler {
-	return &Handler{client: client, defaultPriority: defaultPriority}
+func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder) *Handler {
+	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	if !h.shedder.Allow() {
+		if !shadow.GlobalOverrideEnabled() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		log.Printf("worker shedder: would have shed request, shadow mode active")
+	} else {
+		defer h.shedder.Release()
 	}
 
 	key := r.URL.Query().Get("key")

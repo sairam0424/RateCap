@@ -12,6 +12,7 @@ import (
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
 	"github.com/ratecap/sidecar/proxy"
+	"github.com/ratecap/sidecar/worker"
 )
 
 type fakeRatecapClient struct {
@@ -27,7 +28,7 @@ func (f *fakeRatecapClient) CheckRateLimit(_ context.Context, in *ratecapv1.Chec
 
 func TestServeHTTP_AllowReturns200(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -41,7 +42,7 @@ func TestServeHTTP_AllowReturns200(t *testing.T) {
 
 func TestServeHTTP_Reject429Returns429(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, RetryAfterMs: 500}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -58,7 +59,7 @@ func TestServeHTTP_Reject429Returns429(t *testing.T) {
 
 func TestServeHTTP_ShadowLogReturns200(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_SHADOW_LOG}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -72,7 +73,7 @@ func TestServeHTTP_ShadowLogReturns200(t *testing.T) {
 
 func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	req.Header.Set("x-ratecap-priority", "critical")
@@ -87,7 +88,7 @@ func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
 
 func TestServeHTTP_ThreadsCriticalPriorityHeaderIntoRequest(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	req.Header.Set("x-ratecap-priority", "critical")
@@ -105,7 +106,7 @@ func TestServeHTTP_ThreadsCriticalPriorityHeaderIntoRequest(t *testing.T) {
 
 func TestServeHTTP_DefaultsToSheddablePriorityWhenNoHeader(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -128,7 +129,7 @@ func TestServeHTTP_SetsIndexedConcurrencyHeadersForEachReservation(t *testing.T)
 			{Key: "fleet", Token: "tok-xyz"},
 		},
 	}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -154,7 +155,7 @@ func TestServeHTTP_SetsIndexedConcurrencyHeadersForEachReservation(t *testing.T)
 
 func TestServeHTTP_OmitsIndexedConcurrencyHeadersWhenNoReservations(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -171,7 +172,7 @@ func TestServeHTTP_OmitsIndexedConcurrencyHeadersWhenNoReservations(t *testing.T
 
 func TestServeHTTP_SkipReservationsParamSetsSkipReservationsOnRequest(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&skip_reservations=true", nil)
 	rec := httptest.NewRecorder()
@@ -188,7 +189,7 @@ func TestServeHTTP_SkipReservationsParamSetsSkipReservationsOnRequest(t *testing
 
 func TestServeHTTP_NoSkipReservationsParamLeavesSkipReservationsFalse(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -205,7 +206,7 @@ func TestServeHTTP_NoSkipReservationsParamLeavesSkipReservationsFalse(t *testing
 
 func TestServeHTTP_RejectsNonGETMethod(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
-	h := proxy.NewHandler(client, proxy.Sheddable)
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
 
 	req := httptest.NewRequest(http.MethodPost, "/check?key=user-1", nil)
 	rec := httptest.NewRecorder()
@@ -214,6 +215,66 @@ func TestServeHTTP_RejectsNonGETMethod(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_ShedsWithoutCallingClientWhenOverInFlightLimit(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+	if client.lastReq != nil {
+		t.Error("expected CheckRateLimit to never be called when the in-flight limit is exceeded")
+	}
+}
+
+func TestServeHTTP_AllowsRequestAndReleasesSlotWhenUnderLimit(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(1)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called when under the in-flight limit")
+	}
+
+	if !shedder.Allow() {
+		t.Fatal("expected the slot to have been released after ServeHTTP returned, but Allow() still reports over-limit")
+	}
+}
+
+func TestServeHTTP_ShadowModeProceedsToClientInsteadOfShedding(t *testing.T) {
+	t.Setenv("RATECAP_SHADOW_MODE", "true")
+
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called even though the in-flight limit was exceeded, since shadow mode is active")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (core's own ALLOW response, shadow mode doesn't force a code here), got %d", rec.Code)
 	}
 }
 
