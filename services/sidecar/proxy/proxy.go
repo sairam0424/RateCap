@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -37,23 +38,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
+	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
+	protoPriority := ratecapv1.Priority_SHEDDABLE
+	if priority == Critical {
+		protoPriority = ratecapv1.Priority_CRITICAL
+	}
 
-	skipConcurrency := r.URL.Query().Get("skip_concurrency") == "true"
+	skipReservations := r.URL.Query().Get("skip_reservations") == "true"
 
 	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{
-		Key:                  key,
-		Cost:                 1,
-		SkipConcurrencyLimit: skipConcurrency,
+		Key:              key,
+		Cost:             1,
+		SkipReservations: skipReservations,
+		Priority:         protoPriority,
 	})
 	if err != nil {
 		http.Error(w, "upstream check failed", http.StatusInternalServerError)
 		return
 	}
 
-	if len(resp.Reservations) > 0 {
-		w.Header().Set("Concurrency-Token", resp.Reservations[0].Token)
-		w.Header().Set("Concurrency-Key", resp.Reservations[0].Key)
+	for i, reservation := range resp.Reservations {
+		w.Header().Set(fmt.Sprintf("Concurrency-Token-%d", i), reservation.Token)
+		w.Header().Set(fmt.Sprintf("Concurrency-Key-%d", i), reservation.Key)
 	}
 
 	action := resp.Action
