@@ -16,6 +16,22 @@ import (
 	"github.com/ratecap/sidecar/worker"
 )
 
+func resolveMaxInflight(envVal string, defaultVal int64) int64 {
+	if envVal == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseInt(envVal, 10, 64)
+	if err != nil {
+		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q is not a valid integer, using default of %d: %v", envVal, defaultVal, err)
+		return defaultVal
+	}
+	if parsed <= 0 {
+		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q must be a positive integer, using default of %d", envVal, defaultVal)
+		return defaultVal
+	}
+	return parsed
+}
+
 func main() {
 	coreAddr := os.Getenv("RATECAP_CORE_ADDR")
 	if coreAddr == "" {
@@ -39,15 +55,7 @@ func main() {
 
 	client := ratecapv1.NewRatecapServiceClient(conn)
 
-	maxInflight := int64(500)
-	if v := os.Getenv("RATECAP_MAX_INFLIGHT_REQUESTS"); v != "" {
-		parsed, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q is not a valid integer, using default of %d: %v", v, maxInflight, err)
-		} else {
-			maxInflight = parsed
-		}
-	}
+	maxInflight := resolveMaxInflight(os.Getenv("RATECAP_MAX_INFLIGHT_REQUESTS"), 500)
 	shedder := worker.NewShedder(maxInflight)
 
 	mux := http.NewServeMux()
