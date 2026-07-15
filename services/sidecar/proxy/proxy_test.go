@@ -85,10 +85,48 @@ func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
 	}
 }
 
-func TestServeHTTP_SetsConcurrencyTokenAndKeyHeadersWhenReservationPresent(t *testing.T) {
+func TestServeHTTP_ThreadsCriticalPriorityHeaderIntoRequest(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-priority", "critical")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_CRITICAL {
+		t.Errorf("expected Priority_CRITICAL on the outgoing request, got %v", client.lastReq.Priority)
+	}
+}
+
+func TestServeHTTP_DefaultsToSheddablePriorityWhenNoHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_SHEDDABLE {
+		t.Errorf("expected Priority_SHEDDABLE by default, got %v", client.lastReq.Priority)
+	}
+}
+
+func TestServeHTTP_SetsIndexedConcurrencyHeadersForEachReservation(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{
-		Action:       ratecapv1.Action_ALLOW,
-		Reservations: []*ratecapv1.TokenReservation{{Key: "user-1", Token: "tok-abc"}},
+		Action: ratecapv1.Action_ALLOW,
+		Reservations: []*ratecapv1.TokenReservation{
+			{Key: "user-1", Token: "tok-abc"},
+			{Key: "fleet", Token: "tok-xyz"},
+		},
 	}}
 	h := proxy.NewHandler(client, proxy.Sheddable)
 
@@ -97,15 +135,24 @@ func TestServeHTTP_SetsConcurrencyTokenAndKeyHeadersWhenReservationPresent(t *te
 
 	h.ServeHTTP(rec, req)
 
-	if rec.Header().Get("Concurrency-Token") != "tok-abc" {
-		t.Errorf("expected Concurrency-Token header %q, got %q", "tok-abc", rec.Header().Get("Concurrency-Token"))
+	if rec.Header().Get("Concurrency-Token-0") != "tok-abc" {
+		t.Errorf("expected Concurrency-Token-0 %q, got %q", "tok-abc", rec.Header().Get("Concurrency-Token-0"))
 	}
-	if rec.Header().Get("Concurrency-Key") != "user-1" {
-		t.Errorf("expected Concurrency-Key header %q, got %q", "user-1", rec.Header().Get("Concurrency-Key"))
+	if rec.Header().Get("Concurrency-Key-0") != "user-1" {
+		t.Errorf("expected Concurrency-Key-0 %q, got %q", "user-1", rec.Header().Get("Concurrency-Key-0"))
+	}
+	if rec.Header().Get("Concurrency-Token-1") != "tok-xyz" {
+		t.Errorf("expected Concurrency-Token-1 %q, got %q", "tok-xyz", rec.Header().Get("Concurrency-Token-1"))
+	}
+	if rec.Header().Get("Concurrency-Key-1") != "fleet" {
+		t.Errorf("expected Concurrency-Key-1 %q, got %q", "fleet", rec.Header().Get("Concurrency-Key-1"))
+	}
+	if rec.Header().Get("Concurrency-Token-2") != "" {
+		t.Errorf("expected no Concurrency-Token-2 header (only 2 reservations), got %q", rec.Header().Get("Concurrency-Token-2"))
 	}
 }
 
-func TestServeHTTP_OmitsConcurrencyHeadersWhenNoReservations(t *testing.T) {
+func TestServeHTTP_OmitsIndexedConcurrencyHeadersWhenNoReservations(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	h := proxy.NewHandler(client, proxy.Sheddable)
 
@@ -114,19 +161,19 @@ func TestServeHTTP_OmitsConcurrencyHeadersWhenNoReservations(t *testing.T) {
 
 	h.ServeHTTP(rec, req)
 
-	if rec.Header().Get("Concurrency-Token") != "" {
-		t.Errorf("expected no Concurrency-Token header, got %q", rec.Header().Get("Concurrency-Token"))
+	if rec.Header().Get("Concurrency-Token-0") != "" {
+		t.Errorf("expected no Concurrency-Token-0 header, got %q", rec.Header().Get("Concurrency-Token-0"))
 	}
-	if rec.Header().Get("Concurrency-Key") != "" {
-		t.Errorf("expected no Concurrency-Key header, got %q", rec.Header().Get("Concurrency-Key"))
+	if rec.Header().Get("Concurrency-Key-0") != "" {
+		t.Errorf("expected no Concurrency-Key-0 header, got %q", rec.Header().Get("Concurrency-Key-0"))
 	}
 }
 
-func TestServeHTTP_SkipConcurrencyParamSetsSkipConcurrencyLimitOnRequest(t *testing.T) {
+func TestServeHTTP_SkipReservationsParamSetsSkipReservationsOnRequest(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	h := proxy.NewHandler(client, proxy.Sheddable)
 
-	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&skip_concurrency=true", nil)
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&skip_reservations=true", nil)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -134,12 +181,12 @@ func TestServeHTTP_SkipConcurrencyParamSetsSkipConcurrencyLimitOnRequest(t *test
 	if client.lastReq == nil {
 		t.Fatal("expected CheckRateLimit to be called")
 	}
-	if !client.lastReq.SkipConcurrencyLimit {
-		t.Error("expected SkipConcurrencyLimit=true when skip_concurrency=true query param is set")
+	if !client.lastReq.SkipReservations {
+		t.Error("expected SkipReservations=true when skip_reservations=true query param is set")
 	}
 }
 
-func TestServeHTTP_NoSkipConcurrencyParamLeavesSkipConcurrencyLimitFalse(t *testing.T) {
+func TestServeHTTP_NoSkipReservationsParamLeavesSkipReservationsFalse(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	h := proxy.NewHandler(client, proxy.Sheddable)
 
@@ -151,8 +198,8 @@ func TestServeHTTP_NoSkipConcurrencyParamLeavesSkipConcurrencyLimitFalse(t *test
 	if client.lastReq == nil {
 		t.Fatal("expected CheckRateLimit to be called")
 	}
-	if client.lastReq.SkipConcurrencyLimit {
-		t.Error("expected SkipConcurrencyLimit=false when skip_concurrency param is absent")
+	if client.lastReq.SkipReservations {
+		t.Error("expected SkipReservations=false when skip_reservations param is absent")
 	}
 }
 

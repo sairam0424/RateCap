@@ -108,20 +108,53 @@ func TestCheckRateLimit_ReturnsNoReservationsWhenNonePresent(t *testing.T) {
 	}
 }
 
-func TestCheckRateLimit_PropagatesSkipConcurrencyLimitToPipeline(t *testing.T) {
+func TestCheckRateLimit_PropagatesSkipReservationsToPipeline(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
 	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
-		Key:                  "user-1",
-		Cost:                 1,
-		SkipConcurrencyLimit: true,
+		Key:              "user-1",
+		Cost:             1,
+		SkipReservations: true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !fl.lastReq.SkipConcurrencyLimit {
-		t.Error("expected SkipConcurrencyLimit=true to propagate into limiter.Request")
+	if !fl.lastReq.SkipReservations {
+		t.Error("expected SkipReservations=true to propagate into limiter.Request")
+	}
+}
+
+func TestCheckRateLimit_PropagatesCriticalPriorityToPipeline(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:      "user-1",
+		Cost:     1,
+		Priority: ratecapv1.Priority_CRITICAL,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fl.lastReq.Priority != limiter.Critical {
+		t.Errorf("expected Priority to map to limiter.Critical, got %v", fl.lastReq.Priority)
+	}
+}
+
+func TestCheckRateLimit_DefaultPriorityMapsToSheddable(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:  "user-1",
+		Cost: 1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fl.lastReq.Priority != limiter.Sheddable {
+		t.Errorf("expected default/unset Priority to map to limiter.Sheddable, got %v", fl.lastReq.Priority)
 	}
 }
 

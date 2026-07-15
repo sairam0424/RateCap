@@ -31,10 +31,16 @@ func NewServer(p checker, releaser concurrencyReleaser) *Server {
 }
 
 func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLimitRequest) (*ratecapv1.CheckRateLimitResponse, error) {
+	priority := limiter.Sheddable
+	if req.Priority == ratecapv1.Priority_CRITICAL {
+		priority = limiter.Critical
+	}
+
 	decision, err := s.pipeline.Check(ctx, limiter.Request{
-		Key:                  req.Key,
-		Cost:                 int(req.Cost),
-		SkipConcurrencyLimit: req.SkipConcurrencyLimit,
+		Key:              req.Key,
+		Cost:             int(req.Cost),
+		SkipReservations: req.SkipReservations,
+		Priority:         priority,
 	})
 	if err != nil {
 		return nil, internalError("CheckRateLimit", err)

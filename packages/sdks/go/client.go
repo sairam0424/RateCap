@@ -2,6 +2,7 @@ package ratecap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,7 +23,7 @@ func NewClient(sidecarAddr string) *Client {
 // tier 2 here (rather than leaking a slot per call) is what keeps Allow's
 // original fire-and-forget contract intact now that tier 2 exists.
 func (c *Client) Allow(ctx context.Context, key string) (allowed bool, retryAfterMs int64, err error) {
-	reqURL := c.sidecarAddr + "/check?key=" + url.QueryEscape(key) + "&skip_concurrency=true"
+	reqURL := c.sidecarAddr + "/check?key=" + url.QueryEscape(key) + "&skip_reservations=true"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -46,27 +47,40 @@ func (c *Client) Allow(ctx context.Context, key string) (allowed bool, retryAfte
 	return false, retryAfterMs, nil
 }
 
+type reservation struct {
+	key string
+	tok string
+}
+
 type Ticket struct {
 	Allowed      bool
 	RetryAfterMs int64
 
-	client *Client
-	key    string
-	tok    string
+	client       *Client
+	reservations []reservation
 }
 
-// Release is best-effort with no retry: a non-nil error is a signal for the
-// caller to log, not something to retry or otherwise act on — the design
-// spec's Lua reaper (max_request_duration_ms) is the actual mechanism that
-// frees a slot after a lost or failed Release, not a fallback for one.
+// Release is best-effort with no retry, releasing every reservation the
+// Ticket holds (a single Acquire can produce more than one — e.g. tier 2's
+// per-user slot and tier 3's global slot): a non-nil error is a signal for
+// the caller to log, not something to retry or otherwise act on — the
+// design spec's Lua reaper (max_request_duration_ms) is the actual
+// mechanism that frees a slot after a lost or failed Release, not a
+// fallback for one, for every reservation individually.
 func (t *Ticket) Release(ctx context.Context) error {
-	if t.tok == "" {
-		return nil
+	var errs []error
+	for _, r := range t.reservations {
+		if err := t.releaseOne(ctx, r); err != nil {
+			errs = append(errs, err)
+		}
 	}
+	return errors.Join(errs...)
+}
 
+func (t *Ticket) releaseOne(ctx context.Context, r reservation) error {
 	params := url.Values{}
-	params.Set("key", t.key)
-	params.Set("token", t.tok)
+	params.Set("key", r.key)
+	params.Set("token", r.tok)
 	reqURL := t.client.sidecarAddr + "/release?" + params.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
@@ -101,16 +115,23 @@ func (c *Client) Acquire(ctx context.Context, key string) (*Ticket, error) {
 	}
 	defer resp.Body.Close()
 
-	concurrencyTok := resp.Header.Get("Concurrency-Token")
-	concurrencyKey := resp.Header.Get("Concurrency-Key")
+	var reservations []reservation
+	for i := 0; ; i++ {
+		tok := resp.Header.Get(fmt.Sprintf("Concurrency-Token-%d", i))
+		if tok == "" {
+			break
+		}
+		key := resp.Header.Get(fmt.Sprintf("Concurrency-Key-%d", i))
+		reservations = append(reservations, reservation{key: key, tok: tok})
+	}
 
 	if resp.StatusCode == http.StatusOK {
-		return &Ticket{Allowed: true, client: c, key: concurrencyKey, tok: concurrencyTok}, nil
+		return &Ticket{Allowed: true, client: c, reservations: reservations}, nil
 	}
 
 	var retryAfterMs int64
 	if v := resp.Header.Get("Retry-After-Ms"); v != "" {
 		retryAfterMs, _ = strconv.ParseInt(v, 10, 64)
 	}
-	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, client: c, key: concurrencyKey, tok: concurrencyTok}, nil
+	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, client: c, reservations: reservations}, nil
 }

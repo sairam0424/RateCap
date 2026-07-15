@@ -11,6 +11,13 @@ const (
 	SHADOW_LOG
 )
 
+type Priority int
+
+const (
+	Sheddable Priority = iota
+	Critical
+)
+
 type TokenReservation struct {
 	Key   string
 	Token string
@@ -23,9 +30,10 @@ type Decision struct {
 }
 
 type Request struct {
-	Key                  string
-	Cost                 int
-	SkipConcurrencyLimit bool
+	Key              string
+	Cost             int
+	SkipReservations bool
+	Priority         Priority
 }
 
 type Limiter interface {
