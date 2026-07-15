@@ -73,6 +73,52 @@ func (Action) EnumDescriptor() ([]byte, []int) {
 	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{0}
 }
 
+type Priority int32
+
+const (
+	Priority_SHEDDABLE Priority = 0
+	Priority_CRITICAL  Priority = 1
+)
+
+// Enum value maps for Priority.
+var (
+	Priority_name = map[int32]string{
+		0: "SHEDDABLE",
+		1: "CRITICAL",
+	}
+	Priority_value = map[string]int32{
+		"SHEDDABLE": 0,
+		"CRITICAL":  1,
+	}
+)
+
+func (x Priority) Enum() *Priority {
+	p := new(Priority)
+	*p = x
+	return p
+}
+
+func (x Priority) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Priority) Descriptor() protoreflect.EnumDescriptor {
+	return file_ratecap_v1_ratecap_proto_enumTypes[1].Descriptor()
+}
+
+func (Priority) Type() protoreflect.EnumType {
+	return &file_ratecap_v1_ratecap_proto_enumTypes[1]
+}
+
+func (x Priority) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Priority.Descriptor instead.
+func (Priority) EnumDescriptor() ([]byte, []int) {
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{1}
+}
+
 type TokenReservation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -126,12 +172,13 @@ func (x *TokenReservation) GetToken() string {
 }
 
 type CheckRateLimitRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Key                  string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Cost                 int32                  `protobuf:"varint,2,opt,name=cost,proto3" json:"cost,omitempty"`
-	SkipConcurrencyLimit bool                   `protobuf:"varint,3,opt,name=skip_concurrency_limit,json=skipConcurrencyLimit,proto3" json:"skip_concurrency_limit,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Key              string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Cost             int32                  `protobuf:"varint,2,opt,name=cost,proto3" json:"cost,omitempty"`
+	SkipReservations bool                   `protobuf:"varint,3,opt,name=skip_reservations,json=skipReservations,proto3" json:"skip_reservations,omitempty"`
+	Priority         Priority               `protobuf:"varint,4,opt,name=priority,proto3,enum=ratecap.v1.Priority" json:"priority,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CheckRateLimitRequest) Reset() {
@@ -178,11 +225,18 @@ func (x *CheckRateLimitRequest) GetCost() int32 {
 	return 0
 }
 
-func (x *CheckRateLimitRequest) GetSkipConcurrencyLimit() bool {
+func (x *CheckRateLimitRequest) GetSkipReservations() bool {
 	if x != nil {
-		return x.SkipConcurrencyLimit
+		return x.SkipReservations
 	}
 	return false
+}
+
+func (x *CheckRateLimitRequest) GetPriority() Priority {
+	if x != nil {
+		return x.Priority
+	}
+	return Priority_SHEDDABLE
 }
 
 type CheckRateLimitResponse struct {
@@ -341,11 +395,12 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"ratecap.v1\":\n" +
 	"\x10TokenReservation\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05token\x18\x02 \x01(\tR\x05token\"s\n" +
+	"\x05token\x18\x02 \x01(\tR\x05token\"\x9c\x01\n" +
 	"\x15CheckRateLimitRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
-	"\x04cost\x18\x02 \x01(\x05R\x04cost\x124\n" +
-	"\x16skip_concurrency_limit\x18\x03 \x01(\bR\x14skipConcurrencyLimit\"\xac\x01\n" +
+	"\x04cost\x18\x02 \x01(\x05R\x04cost\x12+\n" +
+	"\x11skip_reservations\x18\x03 \x01(\bR\x10skipReservations\x120\n" +
+	"\bpriority\x18\x04 \x01(\x0e2\x14.ratecap.v1.PriorityR\bpriority\"\xac\x01\n" +
 	"\x16CheckRateLimitResponse\x12*\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x12.ratecap.v1.ActionR\x06action\x12$\n" +
 	"\x0eretry_after_ms\x18\x02 \x01(\x03R\fretryAfterMs\x12@\n" +
@@ -361,7 +416,10 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\n" +
 	"REJECT_503\x10\x02\x12\x0e\n" +
 	"\n" +
-	"SHADOW_LOG\x10\x032\xce\x01\n" +
+	"SHADOW_LOG\x10\x03*'\n" +
+	"\bPriority\x12\r\n" +
+	"\tSHEDDABLE\x10\x00\x12\f\n" +
+	"\bCRITICAL\x10\x012\xce\x01\n" +
 	"\x0eRatecapService\x12W\n" +
 	"\x0eCheckRateLimit\x12!.ratecap.v1.CheckRateLimitRequest\x1a\".ratecap.v1.CheckRateLimitResponse\x12c\n" +
 	"\x12ReleaseConcurrency\x12%.ratecap.v1.ReleaseConcurrencyRequest\x1a&.ratecap.v1.ReleaseConcurrencyResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
@@ -378,28 +436,30 @@ func file_ratecap_v1_ratecap_proto_rawDescGZIP() []byte {
 	return file_ratecap_v1_ratecap_proto_rawDescData
 }
 
-var file_ratecap_v1_ratecap_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_ratecap_v1_ratecap_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_ratecap_v1_ratecap_proto_goTypes = []any{
 	(Action)(0),                        // 0: ratecap.v1.Action
-	(*TokenReservation)(nil),           // 1: ratecap.v1.TokenReservation
-	(*CheckRateLimitRequest)(nil),      // 2: ratecap.v1.CheckRateLimitRequest
-	(*CheckRateLimitResponse)(nil),     // 3: ratecap.v1.CheckRateLimitResponse
-	(*ReleaseConcurrencyRequest)(nil),  // 4: ratecap.v1.ReleaseConcurrencyRequest
-	(*ReleaseConcurrencyResponse)(nil), // 5: ratecap.v1.ReleaseConcurrencyResponse
+	(Priority)(0),                      // 1: ratecap.v1.Priority
+	(*TokenReservation)(nil),           // 2: ratecap.v1.TokenReservation
+	(*CheckRateLimitRequest)(nil),      // 3: ratecap.v1.CheckRateLimitRequest
+	(*CheckRateLimitResponse)(nil),     // 4: ratecap.v1.CheckRateLimitResponse
+	(*ReleaseConcurrencyRequest)(nil),  // 5: ratecap.v1.ReleaseConcurrencyRequest
+	(*ReleaseConcurrencyResponse)(nil), // 6: ratecap.v1.ReleaseConcurrencyResponse
 }
 var file_ratecap_v1_ratecap_proto_depIdxs = []int32{
-	0, // 0: ratecap.v1.CheckRateLimitResponse.action:type_name -> ratecap.v1.Action
-	1, // 1: ratecap.v1.CheckRateLimitResponse.reservations:type_name -> ratecap.v1.TokenReservation
-	2, // 2: ratecap.v1.RatecapService.CheckRateLimit:input_type -> ratecap.v1.CheckRateLimitRequest
-	4, // 3: ratecap.v1.RatecapService.ReleaseConcurrency:input_type -> ratecap.v1.ReleaseConcurrencyRequest
-	3, // 4: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
-	5, // 5: ratecap.v1.RatecapService.ReleaseConcurrency:output_type -> ratecap.v1.ReleaseConcurrencyResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: ratecap.v1.CheckRateLimitRequest.priority:type_name -> ratecap.v1.Priority
+	0, // 1: ratecap.v1.CheckRateLimitResponse.action:type_name -> ratecap.v1.Action
+	2, // 2: ratecap.v1.CheckRateLimitResponse.reservations:type_name -> ratecap.v1.TokenReservation
+	3, // 3: ratecap.v1.RatecapService.CheckRateLimit:input_type -> ratecap.v1.CheckRateLimitRequest
+	5, // 4: ratecap.v1.RatecapService.ReleaseConcurrency:input_type -> ratecap.v1.ReleaseConcurrencyRequest
+	4, // 5: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
+	6, // 6: ratecap.v1.RatecapService.ReleaseConcurrency:output_type -> ratecap.v1.ReleaseConcurrencyResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_ratecap_v1_ratecap_proto_init() }
@@ -412,7 +472,7 @@ func file_ratecap_v1_ratecap_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ratecap_v1_ratecap_proto_rawDesc), len(file_ratecap_v1_ratecap_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,

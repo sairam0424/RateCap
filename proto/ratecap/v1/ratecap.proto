@@ -16,6 +16,11 @@ enum Action {
   SHADOW_LOG = 3;
 }
 
+enum Priority {
+  SHEDDABLE = 0;
+  CRITICAL = 1;
+}
+
 message TokenReservation {
   string key = 1;
   string token = 2;
@@ -24,7 +29,8 @@ message TokenReservation {
 message CheckRateLimitRequest {
   string key = 1;
   int32 cost = 2;
-  bool skip_concurrency_limit = 3;
+  bool skip_reservations = 3;
+  Priority priority = 4;
 }
 
 message CheckRateLimitResponse {
