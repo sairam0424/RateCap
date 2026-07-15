@@ -12,11 +12,15 @@ func NewShedder(max int64) *Shedder {
 }
 
 func (s *Shedder) Allow() bool {
-	if s.inflight.Load() >= s.max {
-		return false
+	for {
+		current := s.inflight.Load()
+		if current >= s.max {
+			return false
+		}
+		if s.inflight.CompareAndSwap(current, current+1) {
+			return true
+		}
 	}
-	s.inflight.Add(1)
-	return true
 }
 
 func (s *Shedder) Release() {
