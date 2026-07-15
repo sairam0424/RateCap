@@ -31,6 +31,7 @@ services:
       RATECAP_CORE_ADDR: core:9090
       RATECAP_SIDECAR_ADDR: :8080
       RATECAP_SHARED_SECRET: demo-shared-secret-do-not-use-in-production
+      RATECAP_MAX_INFLIGHT_REQUESTS: "3"
     depends_on:
       - core
     ports:
