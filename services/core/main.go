@@ -27,6 +27,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid config: %v", err)
+	}
 
 	redisAddr := os.Getenv("RATECAP_REDIS_ADDR")
 	if redisAddr == "" {
@@ -66,6 +69,10 @@ func main() {
 	pipeline := limiter.NewPipeline(rateLimiter, concurrencyLimiter, fleetShedder)
 
 	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config) {
+		if err := newCfg.Validate(); err != nil {
+			log.Printf("ignoring invalid config reload: %v", err)
+			return
+		}
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
 		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode)
 		fleetShedder.Reconfigure(newCfg.Tiers.FleetShedder.DefaultMaxConcurrent, newCfg.Tiers.FleetShedder.ReservedCriticalPct, newCfg.Tiers.FleetShedder.MaxRequestDurationMs, newCfg.Tiers.FleetShedder.ShadowMode)

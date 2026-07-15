@@ -49,3 +49,13 @@ func Load(path string) (*Config, error) {
 
 	return &cfg, nil
 }
+
+func (c *Config) Validate() error {
+	if c.Tiers.FleetShedder.DefaultMaxConcurrent <= 0 {
+		return fmt.Errorf("tiers.fleet_shedder.default_max_concurrent must be > 0, got %d (is the fleet_shedder block missing from your config?)", c.Tiers.FleetShedder.DefaultMaxConcurrent)
+	}
+	if c.Tiers.FleetShedder.ReservedCriticalPct < 0 || c.Tiers.FleetShedder.ReservedCriticalPct > 100 {
+		return fmt.Errorf("tiers.fleet_shedder.reserved_critical_pct must be between 0 and 100 inclusive, got %d", c.Tiers.FleetShedder.ReservedCriticalPct)
+	}
+	return nil
+}
