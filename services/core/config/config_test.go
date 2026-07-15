@@ -123,6 +123,7 @@ tiers:
 
 func TestValidate_AcceptsValidFleetShedderConfig(t *testing.T) {
 	cfg := &config.Config{}
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
 	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
 	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
 
@@ -174,6 +175,7 @@ func TestValidate_RejectsNegativeReservedCriticalPct(t *testing.T) {
 func TestValidate_AcceptsReservedCriticalPctBoundaries(t *testing.T) {
 	for _, pct := range []int{0, 100} {
 		cfg := &config.Config{}
+		cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
 		cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
 		cfg.Tiers.FleetShedder.ReservedCriticalPct = pct
 
@@ -200,5 +202,61 @@ tiers:
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error when fleet_shedder block is omitted entirely (zero-valued DefaultMaxConcurrent), got nil")
+	}
+}
+
+func TestValidate_AcceptsValidConcurrencyLimiterConfig(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_RejectsZeroConcurrencyLimiterDefaultMaxConcurrent(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for concurrency_limiter.default_max_concurrent=0, got nil")
+	}
+}
+
+func TestValidate_RejectsNegativeConcurrencyLimiterDefaultMaxConcurrent(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = -5
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for negative concurrency_limiter.default_max_concurrent, got nil")
+	}
+}
+
+func TestValidate_ErrorMentionsConcurrencyLimiterOnMissingBlock(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+  fleet_shedder:
+    default_max_concurrent: 100
+    reserved_critical_pct: 20
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error loading: %v", err)
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when concurrency_limiter block is omitted entirely (zero-valued DefaultMaxConcurrent), got nil")
 	}
 }
