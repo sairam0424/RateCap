@@ -82,3 +82,41 @@ tiers:
 		t.Errorf("expected ShadowMode=false, got %v", cfg.Tiers.ConcurrencyLimiter.ShadowMode)
 	}
 }
+
+func TestLoad_ParsesFleetShedderTier(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+  fleet_shedder:
+    default_max_concurrent: 100
+    reserved_critical_pct: 20
+    max_request_duration_ms: 30000
+    default_priority: sheddable
+    shadow_mode: false
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Tiers.FleetShedder.DefaultMaxConcurrent != 100 {
+		t.Errorf("expected DefaultMaxConcurrent=100, got %d", cfg.Tiers.FleetShedder.DefaultMaxConcurrent)
+	}
+	if cfg.Tiers.FleetShedder.ReservedCriticalPct != 20 {
+		t.Errorf("expected ReservedCriticalPct=20, got %d", cfg.Tiers.FleetShedder.ReservedCriticalPct)
+	}
+	if cfg.Tiers.FleetShedder.MaxRequestDurationMs != 30000 {
+		t.Errorf("expected MaxRequestDurationMs=30000, got %d", cfg.Tiers.FleetShedder.MaxRequestDurationMs)
+	}
+	if cfg.Tiers.FleetShedder.DefaultPriority != "sheddable" {
+		t.Errorf("expected DefaultPriority=%q, got %q", "sheddable", cfg.Tiers.FleetShedder.DefaultPriority)
+	}
+	if cfg.Tiers.FleetShedder.ShadowMode != false {
+		t.Errorf("expected ShadowMode=false, got %v", cfg.Tiers.FleetShedder.ShadowMode)
+	}
+}

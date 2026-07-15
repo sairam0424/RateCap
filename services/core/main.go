@@ -55,11 +55,20 @@ func main() {
 		cfg.Tiers.ConcurrencyLimiter.ShadowMode,
 	)
 
-	pipeline := limiter.NewPipeline(rateLimiter, concurrencyLimiter)
+	fleetShedder := limiter.NewFleetShedder(
+		redisStore,
+		cfg.Tiers.FleetShedder.DefaultMaxConcurrent,
+		cfg.Tiers.FleetShedder.ReservedCriticalPct,
+		cfg.Tiers.FleetShedder.MaxRequestDurationMs,
+		cfg.Tiers.FleetShedder.ShadowMode,
+	)
+
+	pipeline := limiter.NewPipeline(rateLimiter, concurrencyLimiter, fleetShedder)
 
 	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config) {
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
 		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode)
+		fleetShedder.Reconfigure(newCfg.Tiers.FleetShedder.DefaultMaxConcurrent, newCfg.Tiers.FleetShedder.ReservedCriticalPct, newCfg.Tiers.FleetShedder.MaxRequestDurationMs, newCfg.Tiers.FleetShedder.ShadowMode)
 	})
 	if err != nil {
 		log.Fatalf("failed to start config watcher: %v", err)
