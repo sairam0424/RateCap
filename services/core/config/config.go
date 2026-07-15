@@ -51,6 +51,9 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent <= 0 {
+		return fmt.Errorf("tiers.concurrency_limiter.default_max_concurrent must be > 0, got %d (is the concurrency_limiter block missing from your config?)", c.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent)
+	}
 	if c.Tiers.FleetShedder.DefaultMaxConcurrent <= 0 {
 		return fmt.Errorf("tiers.fleet_shedder.default_max_concurrent must be > 0, got %d (is the fleet_shedder block missing from your config?)", c.Tiers.FleetShedder.DefaultMaxConcurrent)
 	}
