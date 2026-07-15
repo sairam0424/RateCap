@@ -1,10 +1,12 @@
 package proxy
 
-type Priority int
+import "github.com/ratecap/core/limiter"
+
+type Priority = limiter.Priority
 
 const (
-	Sheddable Priority = iota
-	Critical
+	Sheddable = limiter.Sheddable
+	Critical  = limiter.Critical
 )
 
 func ResolvePriority(headerValue string, defaultPriority Priority) Priority {

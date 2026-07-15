@@ -47,7 +47,7 @@ func (l *ConcurrencyLimiter) Reconfigure(cap int, maxDurationMs int64, shadowMod
 }
 
 func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, error) {
-	if req.SkipConcurrencyLimit {
+	if req.SkipReservations {
 		return Decision{Action: ALLOW}, nil
 	}
 

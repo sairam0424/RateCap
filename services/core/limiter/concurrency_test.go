@@ -121,7 +121,7 @@ func TestConcurrencyLimiter_SkipConcurrencyLimitBypassesTheCapEntirely(t *testin
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		d, err := l.Check(ctx, limiter.Request{Key: "user-skip", SkipConcurrencyLimit: true})
+		d, err := l.Check(ctx, limiter.Request{Key: "user-skip", SkipReservations: true})
 		if err != nil {
 			t.Fatalf("unexpected error on request %d: %v", i, err)
 		}
