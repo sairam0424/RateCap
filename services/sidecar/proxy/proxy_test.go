@@ -278,6 +278,68 @@ func TestServeHTTP_ShadowModeProceedsToClientInsteadOfShedding(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_CriticalPriorityBypassesShedderWhenOverLimit(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-priority", "critical")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (critical priority bypasses the shedder even at max=0), got %d", rec.Code)
+	}
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called for a critical-priority request, even though the in-flight limit was exceeded")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_CRITICAL {
+		t.Errorf("expected Priority_CRITICAL on the outgoing request, got %v", client.lastReq.Priority)
+	}
+}
+
+func TestServeHTTP_SheddablePriorityStillShedsWhenOverLimit(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-priority", "sheddable")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (sheddable priority still sheds at max=0, unchanged behavior), got %d", rec.Code)
+	}
+	if client.lastReq != nil {
+		t.Error("expected CheckRateLimit to never be called for a sheddable-priority request over the in-flight limit")
+	}
+}
+
+func TestServeHTTP_CriticalPriorityDoesNotConsumeOrReleaseAShedderSlot(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(1)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-priority", "critical")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	if !shedder.Allow() {
+		t.Fatal("expected the shedder's single slot to still be free after a critical-priority request, since critical never calls Allow()/Release()")
+	}
+	shedder.Release()
+}
+
 type fakeReleaseClient struct {
 	lastKey   string
 	lastToken string

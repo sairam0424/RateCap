@@ -35,26 +35,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.shedder.Allow() {
-		if !shadow.GlobalOverrideEnabled() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
+	protoPriority := ratecapv1.Priority_SHEDDABLE
+	if priority == Critical {
+		protoPriority = ratecapv1.Priority_CRITICAL
+	}
+
+	if priority != Critical {
+		if !h.shedder.Allow() {
+			if !shadow.GlobalOverrideEnabled() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			log.Printf("worker shedder: would have shed request, shadow mode active")
+		} else {
+			defer h.shedder.Release()
 		}
-		log.Printf("worker shedder: would have shed request, shadow mode active")
-	} else {
-		defer h.shedder.Release()
 	}
 
 	key := r.URL.Query().Get("key")
 	if key == "" {
 		http.Error(w, "missing key parameter", http.StatusBadRequest)
 		return
-	}
-
-	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
-	protoPriority := ratecapv1.Priority_SHEDDABLE
-	if priority == Critical {
-		protoPriority = ratecapv1.Priority_CRITICAL
 	}
 
 	skipReservations := r.URL.Query().Get("skip_reservations") == "true"
