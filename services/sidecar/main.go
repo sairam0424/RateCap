@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ratecap/sidecar/auth"
 	"github.com/ratecap/sidecar/proxy"
+	"github.com/ratecap/sidecar/worker"
 )
 
 func main() {
@@ -37,8 +39,19 @@ func main() {
 
 	client := ratecapv1.NewRatecapServiceClient(conn)
 
+	maxInflight := int64(500)
+	if v := os.Getenv("RATECAP_MAX_INFLIGHT_REQUESTS"); v != "" {
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q is not a valid integer, using default of %d: %v", v, maxInflight, err)
+		} else {
+			maxInflight = parsed
+		}
+	}
+	shedder := worker.NewShedder(maxInflight)
+
 	mux := http.NewServeMux()
-	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable))
+	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
 	mux.Handle("/release", proxy.NewReleaseHandler(client))
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")

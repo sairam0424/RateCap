@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
 	"github.com/ratecap/sidecar/shadow"
+	"github.com/ratecap/sidecar/worker"
 )
 
 type ratecapClient interface {
@@ -20,10 +22,11 @@ type ratecapClient interface {
 type Handler struct {
 	client          ratecapClient
 	defaultPriority Priority
+	shedder         *worker.Shedder
 }
 
-func NewHandler(client ratecapClient, defaultPriority Priority) *Handler {
-	return &Handler{client: client, defaultPriority: defaultPriority}
+func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder) *Handler {
+	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -32,16 +35,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		http.Error(w, "missing key parameter", http.StatusBadRequest)
-		return
-	}
-
 	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
 	protoPriority := ratecapv1.Priority_SHEDDABLE
 	if priority == Critical {
 		protoPriority = ratecapv1.Priority_CRITICAL
+	}
+
+	if priority != Critical {
+		if !h.shedder.Allow() {
+			if !shadow.GlobalOverrideEnabled() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			log.Printf("worker shedder: would have shed request, shadow mode active")
+		} else {
+			defer h.shedder.Release()
+		}
+	}
+
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		http.Error(w, "missing key parameter", http.StatusBadRequest)
+		return
 	}
 
 	skipReservations := r.URL.Query().Get("skip_reservations") == "true"

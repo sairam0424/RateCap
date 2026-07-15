@@ -131,6 +131,35 @@ func main() {
 		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priority)
 	})
 
+	http.HandleFunc("/worker-demo", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		key := fmt.Sprintf("worker-demo-%d", fleetDemoCounter.Add(1))
+
+		checkReq, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarBase+"/check?key="+url.QueryEscape(key)+"&skip_reservations=true", nil)
+		if err != nil {
+			http.Error(w, "request construction failed", http.StatusInternalServerError)
+			return
+		}
+
+		resp, err := http.DefaultClient.Do(checkReq)
+		if err != nil {
+			http.Error(w, "worker check failed", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			w.WriteHeader(resp.StatusCode)
+			fmt.Fprintf(w, "shed (status=%d)\n", resp.StatusCode)
+			return
+		}
+
+		time.Sleep(2 * time.Second)
+		fmt.Fprintln(w, "worker request processed")
+	})
+
 	log.Println("sample app listening on :3000")
 	log.Fatal(http.ListenAndServe(":3000", nil))
 }
