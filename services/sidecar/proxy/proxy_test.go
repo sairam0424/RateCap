@@ -1,10 +1,12 @@
 package proxy_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -13,6 +15,7 @@ import (
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/sidecar/decisionlog"
 	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/proxy"
 	"github.com/ratecap/sidecar/worker"
@@ -101,6 +104,46 @@ func TestServeHTTP_RecordsWorkerShedderMetricOnRealShed(t *testing.T) {
 	got := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("worker_shedder", "reject_503"))
 	if got < 1 {
 		t.Errorf("expected ratecap_decisions_total{tier=\"worker_shedder\",action=\"reject_503\"} >= 1, got %v", got)
+	}
+}
+
+func TestServeHTTP_LogsRealPathWorkerShedderDecision(t *testing.T) {
+	var buf bytes.Buffer
+	decisionlog.SetOutput(&buf)
+	defer decisionlog.SetOutput(nil)
+
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(0))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-42", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !strings.Contains(buf.String(), `"tier":"worker_shedder"`) {
+		t.Errorf("expected a worker_shedder log entry, got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"key":"user-42"`) {
+		t.Errorf("expected key=user-42 in the log entry, got:\n%s", buf.String())
+	}
+}
+
+func TestServeHTTP_LogsRealPathTierDecisionFromResponse(t *testing.T) {
+	var buf bytes.Buffer
+	decisionlog.SetOutput(&buf)
+	defer decisionlog.SetOutput(nil)
+
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, Tier: "concurrency_limiter"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-7", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !strings.Contains(buf.String(), `"tier":"concurrency_limiter"`) {
+		t.Errorf("expected a concurrency_limiter log entry, got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"action":"reject_429"`) {
+		t.Errorf("expected action=reject_429 in the log entry, got:\n%s", buf.String())
 	}
 }
 
