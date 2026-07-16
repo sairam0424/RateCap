@@ -244,6 +244,7 @@ type CheckRateLimitResponse struct {
 	Action        Action                 `protobuf:"varint,1,opt,name=action,proto3,enum=ratecap.v1.Action" json:"action,omitempty"`
 	RetryAfterMs  int64                  `protobuf:"varint,2,opt,name=retry_after_ms,json=retryAfterMs,proto3" json:"retry_after_ms,omitempty"`
 	Reservations  []*TokenReservation    `protobuf:"bytes,3,rep,name=reservations,proto3" json:"reservations,omitempty"`
+	Tier          string                 `protobuf:"bytes,4,opt,name=tier,proto3" json:"tier,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -297,6 +298,13 @@ func (x *CheckRateLimitResponse) GetReservations() []*TokenReservation {
 		return x.Reservations
 	}
 	return nil
+}
+
+func (x *CheckRateLimitResponse) GetTier() string {
+	if x != nil {
+		return x.Tier
+	}
+	return ""
 }
 
 type ReleaseConcurrencyRequest struct {
@@ -400,11 +408,12 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
 	"\x04cost\x18\x02 \x01(\x05R\x04cost\x12+\n" +
 	"\x11skip_reservations\x18\x03 \x01(\bR\x10skipReservations\x120\n" +
-	"\bpriority\x18\x04 \x01(\x0e2\x14.ratecap.v1.PriorityR\bpriority\"\xac\x01\n" +
+	"\bpriority\x18\x04 \x01(\x0e2\x14.ratecap.v1.PriorityR\bpriority\"\xc0\x01\n" +
 	"\x16CheckRateLimitResponse\x12*\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x12.ratecap.v1.ActionR\x06action\x12$\n" +
 	"\x0eretry_after_ms\x18\x02 \x01(\x03R\fretryAfterMs\x12@\n" +
-	"\freservations\x18\x03 \x03(\v2\x1c.ratecap.v1.TokenReservationR\freservations\"Z\n" +
+	"\freservations\x18\x03 \x03(\v2\x1c.ratecap.v1.TokenReservationR\freservations\x12\x12\n" +
+	"\x04tier\x18\x04 \x01(\tR\x04tier\"Z\n" +
 	"\x19ReleaseConcurrencyRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x11concurrency_token\x18\x02 \x01(\tR\x10concurrencyToken\"\x1c\n" +

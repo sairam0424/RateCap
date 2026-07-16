@@ -43,6 +43,21 @@ func TestPipeline_AllTiersAllowAccumulatesAllReservations(t *testing.T) {
 	}
 }
 
+func TestPipeline_AllTiersAllowPropagatesLastTierTier(t *testing.T) {
+	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "rate_limiter"}}
+	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "concurrency_limiter"}}
+
+	p := limiter.NewPipeline(tier1, tier2)
+	d, err := p.Check(context.Background(), limiter.Request{Key: "user-1"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Tier != "concurrency_limiter" {
+		t.Errorf(`expected the final ALLOW decision to carry the last tier's Tier ("concurrency_limiter"), got %q`, d.Tier)
+	}
+}
+
 func TestPipeline_FirstTierRejectShortCircuitsSecondTier(t *testing.T) {
 	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 500}}
 	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW, Reservations: []limiter.TokenReservation{{Key: "user-1", Token: "notused"}}}}

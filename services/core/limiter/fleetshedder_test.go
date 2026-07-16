@@ -63,6 +63,19 @@ func TestFleetShedder_UsesFixedGlobalKeyRegardlessOfRequestKey(t *testing.T) {
 	}
 }
 
+func TestFleetShedder_DecisionCarriesFleetShedderTier(t *testing.T) {
+	fs := newFakeFleetStore()
+	l := limiter.NewFleetShedder(fs, 10, 20, 30000, false)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Priority: limiter.Sheddable})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Tier != "fleet_shedder" {
+		t.Errorf(`expected Tier="fleet_shedder", got %q`, d.Tier)
+	}
+}
+
 func TestFleetShedder_AllowsExactlyCapCriticalRequests(t *testing.T) {
 	fs := newFakeFleetStore()
 	l := limiter.NewFleetShedder(fs, 5, 20, 30000, false)

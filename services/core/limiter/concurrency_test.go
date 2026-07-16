@@ -68,6 +68,19 @@ func TestConcurrencyLimiter_AllowsExactlyCapRequests(t *testing.T) {
 	}
 }
 
+func TestConcurrencyLimiter_DecisionCarriesConcurrencyLimiterTier(t *testing.T) {
+	fs := newFakeConcurrencyStore()
+	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Tier != "concurrency_limiter" {
+		t.Errorf(`expected Tier="concurrency_limiter", got %q`, d.Tier)
+	}
+}
+
 func TestConcurrencyLimiter_ShadowModeAlwaysAllows(t *testing.T) {
 	fs := newFakeConcurrencyStore()
 	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, true)

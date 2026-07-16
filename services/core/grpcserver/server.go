@@ -55,6 +55,7 @@ func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLim
 		Action:       toProtoAction(decision.Action),
 		RetryAfterMs: decision.RetryAfterMs,
 		Reservations: reservations,
+		Tier:         decision.Tier,
 	}, nil
 }
 
