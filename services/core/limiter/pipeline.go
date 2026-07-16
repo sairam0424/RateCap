@@ -20,7 +20,9 @@ func (p *Pipeline) Check(ctx context.Context, req Request) (Decision, error) {
 			d.Reservations = reserved
 			return d, err
 		}
-		lastTier = d.Tier
+		if d.Tier != "" {
+			lastTier = d.Tier
+		}
 	}
 	return Decision{Action: ALLOW, Reservations: reserved, Tier: lastTier}, nil
 }
