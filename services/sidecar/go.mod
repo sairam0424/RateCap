@@ -7,6 +7,8 @@ require (
 	google.golang.org/grpc v1.82.0
 )
 
+require github.com/prometheus/client_golang v1.23.2 // indirect
+
 require (
 	github.com/ratecap/core v0.0.0
 	golang.org/x/net v0.53.0 // indirect

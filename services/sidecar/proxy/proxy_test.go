@@ -9,8 +9,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/proxy"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -37,6 +40,67 @@ func TestServeHTTP_AllowReturns200(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_RecordsDecisionMetricWithTierFromResponse(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, Tier: "concurrency_limiter"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	got := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("concurrency_limiter", "reject_429"))
+	if got < 1 {
+		t.Errorf("expected ratecap_decisions_total{tier=\"concurrency_limiter\",action=\"reject_429\"} >= 1, got %v", got)
+	}
+}
+
+func TestServeHTTP_RecordsPreCoercionDecisionUnderShadowMode(t *testing.T) {
+	t.Setenv("RATECAP_SHADOW_MODE", "true")
+
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_503, Tier: "fleet_shedder"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (shadow-coerced), got %d", rec.Code)
+	}
+
+	got := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("fleet_shedder", "reject_503"))
+	if got < 1 {
+		t.Errorf("expected the PRE-coercion action (reject_503) to be recorded despite the 200 response, got %v", got)
+	}
+
+	shadowGot := testutil.ToFloat64(metrics.ShadowWouldRejectTotal.WithLabelValues("fleet_shedder"))
+	if shadowGot < 1 {
+		t.Errorf("expected ratecap_shadow_would_reject_total{tier=\"fleet_shedder\"} >= 1, got %v", shadowGot)
+	}
+}
+
+func TestServeHTTP_RecordsWorkerShedderMetricOnRealShed(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+
+	got := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("worker_shedder", "reject_503"))
+	if got < 1 {
+		t.Errorf("expected ratecap_decisions_total{tier=\"worker_shedder\",action=\"reject_503\"} >= 1, got %v", got)
 	}
 }
 

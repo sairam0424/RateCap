@@ -11,6 +11,7 @@ import (
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/shadow"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -44,9 +45,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if priority != Critical {
 		if !h.shedder.Allow() {
 			if !shadow.GlobalOverrideEnabled() {
+				metrics.RecordDecision("worker_shedder", "reject_503")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
+			metrics.RecordDecision("worker_shedder", "reject_503")
+			metrics.RecordShadowWouldReject("worker_shedder")
 			log.Printf("worker shedder: would have shed request, shadow mode active")
 		} else {
 			defer h.shedder.Release()
@@ -77,9 +81,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(fmt.Sprintf("Concurrency-Key-%d", i), reservation.Key)
 	}
 
-	action := resp.Action
+	realAction := resp.Action
+	action := realAction
 	if shadow.GlobalOverrideEnabled() {
 		action = shadow.CoerceIfShadowOverridden(action, true)
+	}
+
+	metrics.RecordDecision(resp.Tier, actionLabel(realAction))
+	if action != realAction {
+		metrics.RecordShadowWouldReject(resp.Tier)
 	}
 
 	switch action {
@@ -90,6 +100,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	case ratecapv1.Action_REJECT_503:
 		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+}
+
+func actionLabel(a ratecapv1.Action) string {
+	switch a {
+	case ratecapv1.Action_ALLOW:
+		return "allow"
+	case ratecapv1.Action_REJECT_429:
+		return "reject_429"
+	case ratecapv1.Action_REJECT_503:
+		return "reject_503"
+	case ratecapv1.Action_SHADOW_LOG:
+		return "shadow_log"
+	default:
+		return "unknown"
 	}
 }
 

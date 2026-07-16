@@ -12,6 +12,7 @@ import (
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
 	"github.com/ratecap/sidecar/auth"
+	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/proxy"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -61,6 +62,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
 	mux.Handle("/release", proxy.NewReleaseHandler(client))
+	mux.Handle("/metrics", metrics.Handler())
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {
