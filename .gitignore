@@ -4,3 +4,7 @@
 *.test
 .claude/
 /deploy/certs/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
