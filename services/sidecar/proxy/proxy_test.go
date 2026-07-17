@@ -178,6 +178,35 @@ func TestServeHTTP_ShadowLogReturns200(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_QueueActionReturns200(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_QUEUE, Tier: "concurrency_limiter"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for a queued-then-served request (transparent to the client), got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_RecordsQueueActionMetricLabel(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_QUEUE, Tier: "concurrency_limiter"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	got := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("concurrency_limiter", "queue"))
+	if got < 1 {
+		t.Errorf(`expected ratecap_decisions_total{tier="concurrency_limiter",action="queue"} >= 1, got %v`, got)
+	}
+}
+
 func TestServeHTTP_ParsesPriorityHeaderWithoutError(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))

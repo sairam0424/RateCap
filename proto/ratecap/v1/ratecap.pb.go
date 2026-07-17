@@ -28,6 +28,7 @@ const (
 	Action_REJECT_429 Action = 1
 	Action_REJECT_503 Action = 2
 	Action_SHADOW_LOG Action = 3
+	Action_QUEUE      Action = 4
 )
 
 // Enum value maps for Action.
@@ -37,12 +38,14 @@ var (
 		1: "REJECT_429",
 		2: "REJECT_503",
 		3: "SHADOW_LOG",
+		4: "QUEUE",
 	}
 	Action_value = map[string]int32{
 		"ALLOW":      0,
 		"REJECT_429": 1,
 		"REJECT_503": 2,
 		"SHADOW_LOG": 3,
+		"QUEUE":      4,
 	}
 )
 
@@ -417,7 +420,7 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\x19ReleaseConcurrencyRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x11concurrency_token\x18\x02 \x01(\tR\x10concurrencyToken\"\x1c\n" +
-	"\x1aReleaseConcurrencyResponse*C\n" +
+	"\x1aReleaseConcurrencyResponse*N\n" +
 	"\x06Action\x12\t\n" +
 	"\x05ALLOW\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -425,7 +428,8 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\n" +
 	"REJECT_503\x10\x02\x12\x0e\n" +
 	"\n" +
-	"SHADOW_LOG\x10\x03*'\n" +
+	"SHADOW_LOG\x10\x03\x12\t\n" +
+	"\x05QUEUE\x10\x04*'\n" +
 	"\bPriority\x12\r\n" +
 	"\tSHEDDABLE\x10\x00\x12\f\n" +
 	"\bCRITICAL\x10\x012\xce\x01\n" +

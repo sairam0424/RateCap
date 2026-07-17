@@ -46,3 +46,10 @@ func TestCoerceIfShadowOverridden_AllowPassesThroughRegardless(t *testing.T) {
 		t.Errorf("expected ALLOW unchanged even in override, got %v", got)
 	}
 }
+
+func TestCoerceIfShadowOverridden_LeavesQueueUnchanged(t *testing.T) {
+	got := shadow.CoerceIfShadowOverridden(ratecapv1.Action_QUEUE, true)
+	if got != ratecapv1.Action_QUEUE {
+		t.Errorf("expected QUEUE to pass through shadow coercion unchanged (only REJECT_429/REJECT_503 are coerced), got %v", got)
+	}
+}

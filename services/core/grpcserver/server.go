@@ -81,6 +81,8 @@ func toProtoAction(a limiter.Action) ratecapv1.Action {
 		return ratecapv1.Action_REJECT_503
 	case limiter.SHADOW_LOG:
 		return ratecapv1.Action_SHADOW_LOG
+	case limiter.QUEUE:
+		return ratecapv1.Action_QUEUE
 	default:
 		return ratecapv1.Action_REJECT_503
 	}
