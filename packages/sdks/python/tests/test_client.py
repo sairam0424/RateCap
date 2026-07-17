@@ -2,8 +2,8 @@ import os
 import sys
 import unittest
 
-# unittest discover with -s tests (no -t) treats tests/ as the top-level dir,
-# so tests/__init__.py is never imported as a package init and can't put
+# unittest discover with -s <tests-dir> (no -t) treats tests/ as the top-level
+# dir, so tests/__init__.py is never imported as a package init and can't put
 # src/ on sys.path for us — this module is the only thing that runs before
 # `from ratecap import Client` below, so the bootstrap has to live here.
 _SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
@@ -12,7 +12,12 @@ if _SRC_DIR not in sys.path:
 
 from ratecap import Client
 
-from tests.fake_sidecar import FakeSidecar
+# `tests.fake_sidecar` only resolves when cwd is packages/sdks/python (cwd is
+# implicitly on sys.path as ''), which breaks the repo-root invocation
+# `-s packages/sdks/python/tests` where no `tests` package exists at cwd.
+# unittest discover with no -t always puts start_dir itself on sys.path, so a
+# bare import resolves identically from both invocations.
+from fake_sidecar import FakeSidecar
 
 
 class TestAllow(unittest.TestCase):
