@@ -7,6 +7,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
 	"github.com/ratecap/core/store"
+	"github.com/ratecap/core/tlsconfig"
 )
 
 func main() {
@@ -39,6 +41,13 @@ func main() {
 	sharedSecret := os.Getenv("RATECAP_SHARED_SECRET")
 	if sharedSecret == "" {
 		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-core refuses to start without gRPC authentication configured")
+	}
+
+	tlsCertPath := os.Getenv("RATECAP_TLS_CERT_PATH")
+	tlsKeyPath := os.Getenv("RATECAP_TLS_KEY_PATH")
+	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
+	if tlsconfig.EnvVarsPartiallySet(tlsCertPath, tlsKeyPath, tlsCAPath) {
+		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
@@ -92,7 +101,16 @@ func main() {
 		log.Fatalf("failed to listen on %s: %v", listenAddr, err)
 	}
 
-	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret)))
+	serverOpts := []grpc.ServerOption{grpc.UnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret))}
+	if tlsCertPath != "" {
+		tlsConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
+		if err != nil {
+			log.Fatalf("failed to load TLS config: %v", err)
+		}
+		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConf)))
+		log.Printf("ratecap-core: mTLS enabled")
+	}
+	grpcServer := grpc.NewServer(serverOpts...)
 	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore))
 
 	log.Printf("ratecap-core listening on %s", listenAddr)

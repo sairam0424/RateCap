@@ -59,6 +59,19 @@ func TestTokenBucketLimiter_AllowsExactlyBurstRequests(t *testing.T) {
 	}
 }
 
+func TestTokenBucketLimiter_DecisionCarriesRateLimiterTier(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 5, false)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Tier != "rate_limiter" {
+		t.Errorf(`expected Tier="rate_limiter", got %q`, d.Tier)
+	}
+}
+
 func TestTokenBucketLimiter_ShadowModeAlwaysAllows(t *testing.T) {
 	fs := newFakeStore()
 	l := limiter.NewTokenBucketLimiter(fs, 10, 1, true)

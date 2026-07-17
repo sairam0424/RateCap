@@ -37,6 +37,7 @@ message CheckRateLimitResponse {
   Action action = 1;
   int64 retry_after_ms = 2;
   repeated TokenReservation reservations = 3;
+  string tier = 4;
 }
 
 message ReleaseConcurrencyRequest {

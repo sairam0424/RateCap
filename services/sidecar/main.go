@@ -7,12 +7,15 @@ import (
 	"strconv"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
 	"github.com/ratecap/sidecar/auth"
+	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/proxy"
+	"github.com/ratecap/sidecar/tlsconfig"
 	"github.com/ratecap/sidecar/worker"
 )
 
@@ -43,9 +46,26 @@ func main() {
 		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-sidecar refuses to start without gRPC authentication configured")
 	}
 
+	tlsCertPath := os.Getenv("RATECAP_TLS_CERT_PATH")
+	tlsKeyPath := os.Getenv("RATECAP_TLS_KEY_PATH")
+	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
+	if tlsconfig.EnvVarsPartiallySet(tlsCertPath, tlsKeyPath, tlsCAPath) {
+		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
+	}
+
+	transportCreds := insecure.NewCredentials()
+	if tlsCertPath != "" {
+		tlsConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
+		if err != nil {
+			log.Fatalf("failed to load TLS config: %v", err)
+		}
+		transportCreds = credentials.NewTLS(tlsConf)
+		log.Printf("ratecap-sidecar: mTLS enabled")
+	}
+
 	conn, err := grpc.NewClient(
 		coreAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(transportCreds),
 		grpc.WithUnaryInterceptor(auth.UnaryClientInterceptor(sharedSecret)),
 	)
 	if err != nil {
@@ -61,6 +81,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
 	mux.Handle("/release", proxy.NewReleaseHandler(client))
+	mux.Handle("/metrics", metrics.Handler())
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {

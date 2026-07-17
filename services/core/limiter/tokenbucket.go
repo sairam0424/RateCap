@@ -45,12 +45,12 @@ func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, 
 	}
 
 	if allowed {
-		return Decision{Action: ALLOW}, nil
+		return Decision{Action: ALLOW, Tier: "rate_limiter"}, nil
 	}
 
 	if shadowMode {
-		return Decision{Action: SHADOW_LOG, RetryAfterMs: retryAfterMs}, nil
+		return Decision{Action: SHADOW_LOG, RetryAfterMs: retryAfterMs, Tier: "rate_limiter"}, nil
 	}
 
-	return Decision{Action: REJECT_429, RetryAfterMs: retryAfterMs}, nil
+	return Decision{Action: REJECT_429, RetryAfterMs: retryAfterMs, Tier: "rate_limiter"}, nil
 }
