@@ -54,6 +54,22 @@ func TestCheckRateLimit_ReturnsAllowDecision(t *testing.T) {
 	}
 }
 
+func TestCheckRateLimit_ReturnsTierFromDecision(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "rate_limiter"}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:  "user-1",
+		Cost: 1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Tier != "rate_limiter" {
+		t.Errorf(`expected Tier="rate_limiter", got %q`, resp.Tier)
+	}
+}
+
 func TestCheckRateLimit_ReturnsReject429WithRetryAfter(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 250}}
 	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})

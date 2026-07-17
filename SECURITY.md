@@ -4,11 +4,13 @@ RateCap is a rate-limiting and load-shedding system — it sits on your service'
 
 ## Supported Versions
 
-RateCap is currently in v1 development (Tier 1 walking skeleton). Until a tagged v1.0.0 release exists, only the `main` branch receives security fixes.
+RateCap follows semantic versioning. The latest tagged release and the `main` branch receive security fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| main (pre-release) | ✅ |
+| v1.0.x  | ✅ |
+| main    | ✅ |
+| < v1.0.0 | ❌ |
 
 ## Reporting a Vulnerability
 
@@ -30,16 +32,14 @@ When reporting, please include:
 - We will keep you informed as a fix is developed, and credit you in the fix's release notes unless you prefer to remain anonymous.
 - Once a fix is released, we will publish a GitHub Security Advisory with details, coordinated with your disclosure timeline where reasonable.
 
-## Network Transport Security (v1)
+## Network Transport Security
 
-`ratecap-core` and `ratecap-sidecar` communicate over plaintext gRPC, authenticated by a shared secret (`RATECAP_SHARED_SECRET`) rather than TLS/mTLS. This is v1's explicit, intentional posture:
+`ratecap-core` and `ratecap-sidecar` are always authenticated by a shared secret (`RATECAP_SHARED_SECRET`); both services fail closed if it is unset. Transport encryption is separate and optional:
 
-- The shared secret proves a caller is a legitimate RateCap component; it does **not** encrypt traffic or protect against a network-level eavesdropper or man-in-the-middle.
-- **`ratecap-core` and `ratecap-sidecar` must run on a private, trusted network only** — e.g. a Docker Compose network, a Kubernetes cluster-internal `ClusterIP`, or an equivalent isolated segment. Never expose `ratecap-core`'s gRPC port to an untrusted network.
-- Both services fail closed: if `RATECAP_SHARED_SECRET` is unset, neither service starts. There is no supported configuration where gRPC auth is silently disabled.
-- TLS/mTLS for this hop is deferred to v2.
-
-If your deployment cannot guarantee a private network between `ratecap-core` and `ratecap-sidecar`, do not run RateCap v1 in that environment — wait for v2's TLS support, or open an issue describing your constraint.
+- **Without TLS configured** (the default): communication is plaintext, authenticated only by the shared secret. This does **not** encrypt traffic or protect against a network-level eavesdropper or man-in-the-middle. **`ratecap-core` and `ratecap-sidecar` must run on a private, trusted network only** — e.g. a Docker Compose network, a Kubernetes cluster-internal `ClusterIP`, or an equivalent isolated segment. Never expose `ratecap-core`'s gRPC port to an untrusted network.
+- **With TLS configured** (`RATECAP_TLS_CERT_PATH`, `RATECAP_TLS_KEY_PATH`, `RATECAP_TLS_CA_PATH` set on both services): the hop is encrypted, and both sides present and verify certificates via mutual TLS — the sidecar cannot connect to an impostor core, and core rejects any client that doesn't present a certificate signed by the configured CA. This is layered on top of, not a replacement for, the shared-secret check.
+- mTLS is optional and off by default specifically so upgrading an existing deployment never silently breaks it. It is recommended, not required, for v2. If your deployment cannot guarantee a private network and cannot yet configure certificates, treat this as an open risk and prioritize enabling mTLS.
+- Certificate provisioning is the operator's responsibility — RateCap does not issue, rotate, or manage certificates. See `deploy/generate-demo-certs.sh` for how the docker-compose demo generates throwaway, 1-day-validity certs; do not reuse that script's output anywhere but the demo.
 
 ## Priority Claims (v1)
 

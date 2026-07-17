@@ -6,11 +6,14 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/sidecar/decisionlog"
+	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/shadow"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -30,6 +33,8 @@ func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -43,10 +48,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if priority != Critical {
 		if !h.shedder.Allow() {
+			shedKey := r.URL.Query().Get("key")
 			if !shadow.GlobalOverrideEnabled() {
+				metrics.RecordDecision("worker_shedder", "reject_503")
+				decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
+			metrics.RecordDecision("worker_shedder", "reject_503")
+			metrics.RecordShadowWouldReject("worker_shedder")
+			decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
 			log.Printf("worker shedder: would have shed request, shadow mode active")
 		} else {
 			defer h.shedder.Release()
@@ -77,9 +88,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(fmt.Sprintf("Concurrency-Key-%d", i), reservation.Key)
 	}
 
-	action := resp.Action
+	realAction := resp.Action
+	action := realAction
 	if shadow.GlobalOverrideEnabled() {
 		action = shadow.CoerceIfShadowOverridden(action, true)
+	}
+
+	metrics.RecordDecision(resp.Tier, actionLabel(realAction))
+	decisionlog.Log(resp.Tier, key, actionLabel(realAction), priorityLabel(priority), time.Since(start))
+	if action != realAction {
+		metrics.RecordShadowWouldReject(resp.Tier)
 	}
 
 	switch action {
@@ -91,6 +109,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case ratecapv1.Action_REJECT_503:
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
+}
+
+func actionLabel(a ratecapv1.Action) string {
+	switch a {
+	case ratecapv1.Action_ALLOW:
+		return "allow"
+	case ratecapv1.Action_REJECT_429:
+		return "reject_429"
+	case ratecapv1.Action_REJECT_503:
+		return "reject_503"
+	case ratecapv1.Action_SHADOW_LOG:
+		return "shadow_log"
+	default:
+		return "unknown"
+	}
+}
+
+func priorityLabel(p Priority) string {
+	if p == Critical {
+		return "critical"
+	}
+	return "sheddable"
 }
 
 type releaseClient interface {

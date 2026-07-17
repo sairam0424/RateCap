@@ -27,6 +27,7 @@ type Decision struct {
 	Action       Action
 	RetryAfterMs int64
 	Reservations []TokenReservation
+	Tier         string
 }
 
 type Request struct {

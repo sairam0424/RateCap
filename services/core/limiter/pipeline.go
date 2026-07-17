@@ -12,6 +12,7 @@ func NewPipeline(tiers ...Limiter) *Pipeline {
 
 func (p *Pipeline) Check(ctx context.Context, req Request) (Decision, error) {
 	var reserved []TokenReservation
+	var lastTier string
 	for _, tier := range p.tiers {
 		d, err := tier.Check(ctx, req)
 		reserved = append(reserved, d.Reservations...)
@@ -19,6 +20,9 @@ func (p *Pipeline) Check(ctx context.Context, req Request) (Decision, error) {
 			d.Reservations = reserved
 			return d, err
 		}
+		if d.Tier != "" {
+			lastTier = d.Tier
+		}
 	}
-	return Decision{Action: ALLOW, Reservations: reserved}, nil
+	return Decision{Action: ALLOW, Reservations: reserved, Tier: lastTier}, nil
 }

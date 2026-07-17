@@ -50,7 +50,7 @@ func (l *FleetShedder) Check(ctx context.Context, req Request) (Decision, error)
 	}
 
 	if allowed {
-		return Decision{Action: ALLOW, Reservations: []TokenReservation{{Key: fleetKey, Token: token}}}, nil
+		return Decision{Action: ALLOW, Reservations: []TokenReservation{{Key: fleetKey, Token: token}}, Tier: "fleet_shedder"}, nil
 	}
 
 	if shadowMode {
@@ -58,8 +58,8 @@ func (l *FleetShedder) Check(ctx context.Context, req Request) (Decision, error)
 		if err != nil {
 			return Decision{}, err
 		}
-		return Decision{Action: SHADOW_LOG, Reservations: []TokenReservation{{Key: fleetKey, Token: reservedToken}}}, nil
+		return Decision{Action: SHADOW_LOG, Reservations: []TokenReservation{{Key: fleetKey, Token: reservedToken}}, Tier: "fleet_shedder"}, nil
 	}
 
-	return Decision{Action: REJECT_503}, nil
+	return Decision{Action: REJECT_503, Tier: "fleet_shedder"}, nil
 }

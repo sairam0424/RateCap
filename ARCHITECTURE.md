@@ -1,6 +1,6 @@
 # Architecture
 
-RateCap faithfully recreates [Stripe's four-tier rate-limiter and load-shedder architecture](https://stripe.com/blog/rate-limiters) as a hybrid core-engine + sidecar system. v1 implements Tier 1 (the Request Rate Limiter) end-to-end; Tiers 2–4 are planned next.
+RateCap faithfully recreates [Stripe's four-tier rate-limiter and load-shedder architecture](https://stripe.com/blog/rate-limiters) as a hybrid core-engine + sidecar system. v1.0.0 implements all four tiers end-to-end; this document is updated as v2 work lands.
 
 For the full design rationale, decision history, and research basis, see [`docs/superpowers/specs/2026-07-13-ratecap-v1-design.md`](docs/superpowers/specs/2026-07-13-ratecap-v1-design.md). For a diagram-first view of the same material, see [`THINKING_DIAGRAM.md`](THINKING_DIAGRAM.md).
 
@@ -53,7 +53,7 @@ type Limiter interface {
 ```
 
 - `StateStore` is implemented today only by `RedisStore` (Lua/Redis). A future etcd- or in-memory-backed store can implement the same interface without changing limiter logic.
-- `Limiter` is implemented today only by `TokenBucketLimiter`. Tiers 2–4 (concurrent-requests limiter, fleet-usage shedder, worker-utilization shedder) will each be a new `Limiter` implementation composed into a pipeline in `ratecap-core`, reusing the same gRPC/config/observability scaffolding already proven by Tier 1.
+- `Limiter` is implemented by `TokenBucketLimiter` (Tier 1), `ConcurrencyLimiter` (Tier 2), and `FleetShedder` (Tier 3), each composed into a pipeline in `ratecap-core`. Tier 4 (the worker-utilization shedder) is deliberately sidecar-local, not a `Limiter` — see `services/sidecar/worker/shedder.go`.
 
 ## Configuration and hot-reload
 
@@ -65,7 +65,7 @@ Every tier supports `shadow_mode`: the limiter runs its full decision logic (rea
 
 ## Priority resolution (scaffolded ahead of Tier 3)
 
-Tier 1 does not use request priority — only Tier 3 (the fleet-usage shedder, not yet built) will. The resolution mechanism is nonetheless built and tested now (`services/sidecar/proxy/priority.go`), in this fallback order:
+Tier 1 does not use request priority — only Tier 3 (the fleet-usage shedder) does. The resolution mechanism lives in `services/sidecar/proxy/priority.go`, in this fallback order:
 
 1. Per-request `x-ratecap-priority` header (`critical` or `sheddable`)
 2. Static route-config match (not yet wired into config — the header path is scaffolded)

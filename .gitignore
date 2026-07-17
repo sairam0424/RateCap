@@ -3,3 +3,4 @@
 /services/sidecar/sidecar
 *.test
 .claude/
+/deploy/certs/
