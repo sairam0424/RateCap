@@ -10,6 +10,7 @@ func NewRootCmd() *cobra.Command {
 		Short: "Operator CLI for RateCap — validate config, benchmark a running sidecar",
 	}
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newBenchCmd())
 	return root
 }
 
