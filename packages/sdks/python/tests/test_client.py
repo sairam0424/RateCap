@@ -1,4 +1,14 @@
+import os
+import sys
 import unittest
+
+# unittest discover with -s tests (no -t) treats tests/ as the top-level dir,
+# so tests/__init__.py is never imported as a package init and can't put
+# src/ on sys.path for us — this module is the only thing that runs before
+# `from ratecap import Client` below, so the bootstrap has to live here.
+_SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 from ratecap import Client
 
