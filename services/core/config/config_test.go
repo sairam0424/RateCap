@@ -83,6 +83,67 @@ tiers:
 	}
 }
 
+func TestLoad_ParsesConcurrencyLimiterQueueingFields(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+  concurrency_limiter:
+    default_max_concurrent: 20
+    max_request_duration_ms: 30000
+    shadow_mode: false
+    queueing_enabled: true
+    max_backlog: 50
+    max_queue_wait_ms: 2000
+    poll_interval_ms: 25
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.Tiers.ConcurrencyLimiter.QueueingEnabled {
+		t.Error("expected QueueingEnabled=true")
+	}
+	if cfg.Tiers.ConcurrencyLimiter.MaxBacklog != 50 {
+		t.Errorf("expected MaxBacklog=50, got %d", cfg.Tiers.ConcurrencyLimiter.MaxBacklog)
+	}
+	if cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs != 2000 {
+		t.Errorf("expected MaxQueueWaitMs=2000, got %d", cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs)
+	}
+	if cfg.Tiers.ConcurrencyLimiter.PollIntervalMs != 25 {
+		t.Errorf("expected PollIntervalMs=25, got %d", cfg.Tiers.ConcurrencyLimiter.PollIntervalMs)
+	}
+}
+
+func TestLoad_QueueingFieldsDefaultToZeroValuesWhenOmitted(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+  concurrency_limiter:
+    default_max_concurrent: 20
+    max_request_duration_ms: 30000
+    shadow_mode: false
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Tiers.ConcurrencyLimiter.QueueingEnabled {
+		t.Error("expected QueueingEnabled to default to false when the key is omitted (existing configs get zero behavior change)")
+	}
+}
+
 func TestLoad_ParsesFleetShedderTier(t *testing.T) {
 	path := writeTempConfig(t, `
 sync_rate: 5
@@ -258,5 +319,91 @@ tiers:
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error when concurrency_limiter block is omitted entirely (zero-valued DefaultMaxConcurrent), got nil")
+	}
+}
+
+func TestValidate_RejectsZeroMaxBacklogWhenQueueingEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.ConcurrencyLimiter.QueueingEnabled = true
+	cfg.Tiers.ConcurrencyLimiter.MaxBacklog = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for queueing_enabled=true with max_backlog=0, got nil")
+	}
+}
+
+func TestValidate_RejectsNegativeMaxBacklogWhenQueueingEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.ConcurrencyLimiter.QueueingEnabled = true
+	cfg.Tiers.ConcurrencyLimiter.MaxBacklog = -5
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for negative max_backlog with queueing_enabled=true, got nil")
+	}
+}
+
+func TestValidate_RejectsZeroMaxQueueWaitMsWhenQueueingEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.ConcurrencyLimiter.QueueingEnabled = true
+	cfg.Tiers.ConcurrencyLimiter.MaxBacklog = 10
+	cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs = 0
+	cfg.Tiers.ConcurrencyLimiter.PollIntervalMs = 10
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for queueing_enabled=true with max_queue_wait_ms=0, got nil")
+	}
+}
+
+func TestValidate_RejectsZeroPollIntervalMsWhenQueueingEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.ConcurrencyLimiter.QueueingEnabled = true
+	cfg.Tiers.ConcurrencyLimiter.MaxBacklog = 10
+	cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs = 2000
+	cfg.Tiers.ConcurrencyLimiter.PollIntervalMs = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for queueing_enabled=true with poll_interval_ms=0, got nil")
+	}
+}
+
+func TestValidate_RejectsPollIntervalMsGreaterThanMaxQueueWaitMs(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.ConcurrencyLimiter.QueueingEnabled = true
+	cfg.Tiers.ConcurrencyLimiter.MaxBacklog = 10
+	cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs = 100
+	cfg.Tiers.ConcurrencyLimiter.PollIntervalMs = 500
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when poll_interval_ms (500) exceeds max_queue_wait_ms (100) — a waiter would never get to poll before timing out")
+	}
+}
+
+func TestValidate_IgnoresQueueingFieldsWhenQueueingDisabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.ConcurrencyLimiter.QueueingEnabled = false
+	cfg.Tiers.ConcurrencyLimiter.MaxBacklog = 0
+	cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs = 0
+	cfg.Tiers.ConcurrencyLimiter.PollIntervalMs = 0
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected zero-valued queueing fields to be valid when queueing_enabled=false (matches every existing config with no queueing block), got error: %v", err)
 	}
 }
