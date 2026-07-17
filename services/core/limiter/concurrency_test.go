@@ -40,7 +40,7 @@ func (f *fakeConcurrencyStore) DecrConcurrent(_ context.Context, key, _ string) 
 
 func TestConcurrencyLimiter_AllowsExactlyCapRequests(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 3, 30000, false)
+	l := limiter.NewConcurrencyLimiter(fs, 3, 30000, false, false, 0, 0, 0)
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
@@ -70,7 +70,7 @@ func TestConcurrencyLimiter_AllowsExactlyCapRequests(t *testing.T) {
 
 func TestConcurrencyLimiter_DecisionCarriesConcurrencyLimiterTier(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false)
+	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false, false, 0, 0, 0)
 
 	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1"})
 	if err != nil {
@@ -83,7 +83,7 @@ func TestConcurrencyLimiter_DecisionCarriesConcurrencyLimiterTier(t *testing.T) 
 
 func TestConcurrencyLimiter_ShadowModeAlwaysAllows(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, true)
+	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, true, false, 0, 0, 0)
 	ctx := context.Background()
 
 	if _, err := l.Check(ctx, limiter.Request{Key: "user-2"}); err != nil {
@@ -101,7 +101,7 @@ func TestConcurrencyLimiter_ShadowModeAlwaysAllows(t *testing.T) {
 
 func TestConcurrencyLimiter_ShadowModeStillReservesSlot(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, true)
+	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, true, false, 0, 0, 0)
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
@@ -130,7 +130,7 @@ func TestConcurrencyLimiter_ShadowModeStillReservesSlot(t *testing.T) {
 
 func TestConcurrencyLimiter_SkipConcurrencyLimitBypassesTheCapEntirely(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false)
+	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false, false, 0, 0, 0)
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
@@ -157,7 +157,7 @@ func TestConcurrencyLimiter_SkipConcurrencyLimitBypassesTheCapEntirely(t *testin
 
 func TestConcurrencyLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false)
+	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false, false, 0, 0, 0)
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
@@ -172,7 +172,7 @@ func TestConcurrencyLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			l.Reconfigure(10, 30000, n%2 == 0)
+			l.Reconfigure(10, 30000, n%2 == 0, false, 0, 0, 0)
 		}(i)
 	}
 	wg.Wait()
@@ -180,7 +180,7 @@ func TestConcurrencyLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T
 
 func TestConcurrencyLimiter_ReconfigureChangesCap(t *testing.T) {
 	fs := newFakeConcurrencyStore()
-	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false)
+	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false, false, 0, 0, 0)
 	ctx := context.Background()
 
 	if _, err := l.Check(ctx, limiter.Request{Key: "user-3"}); err != nil {
@@ -195,7 +195,7 @@ func TestConcurrencyLimiter_ReconfigureChangesCap(t *testing.T) {
 		t.Fatalf("expected REJECT_429 before reconfigure, got %v", d.Action)
 	}
 
-	l.Reconfigure(1, 30000, true)
+	l.Reconfigure(1, 30000, true, false, 0, 0, 0)
 
 	d, err = l.Check(ctx, limiter.Request{Key: "user-3"})
 	if err != nil {

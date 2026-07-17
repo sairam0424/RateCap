@@ -135,6 +135,42 @@ func TestPipeline_EarlierTierReservationSurvivesLaterTierRejection(t *testing.T)
 	}
 }
 
+func TestPipeline_QueueFromEarlierTierContinuesToLaterTier(t *testing.T) {
+	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.QUEUE, Tier: "concurrency_limiter"}}
+	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "fleet_shedder"}}
+
+	p := limiter.NewPipeline(tier1, tier2)
+	d, err := p.Check(context.Background(), limiter.Request{Key: "user-1"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !tier2.called {
+		t.Fatal("expected tier2 (e.g. FleetShedder) to still be checked after tier1 returned QUEUE, not short-circuited")
+	}
+	if d.Action != limiter.QUEUE {
+		t.Fatalf("expected the overall decision to still carry QUEUE for attribution, got %v", d.Action)
+	}
+	if d.Tier != "fleet_shedder" {
+		t.Errorf(`expected the last tier's Tier ("fleet_shedder") to propagate, got %q`, d.Tier)
+	}
+}
+
+func TestPipeline_LaterTierRejectAfterEarlierQueueStillWins(t *testing.T) {
+	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.QUEUE, Tier: "concurrency_limiter"}}
+	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.REJECT_503, Tier: "fleet_shedder"}}
+
+	p := limiter.NewPipeline(tier1, tier2)
+	d, err := p.Check(context.Background(), limiter.Request{Key: "user-1"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.REJECT_503 {
+		t.Fatalf("expected REJECT_503 from tier2 to win over tier1's QUEUE, got %v", d.Action)
+	}
+}
+
 func TestPipeline_ErrorFromAnyTierShortCircuits(t *testing.T) {
 	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW}}
 	tier2 := &fakeTier{err: errors.New("store unavailable")}
