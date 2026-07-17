@@ -8,6 +8,7 @@ replace github.com/ratecap/sdk-go => ../packages/sdks/go
 
 require (
 	github.com/ratecap/core v0.0.0-00010101000000-000000000000
+	github.com/ratecap/sdk-go v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
 )
 
