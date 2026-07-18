@@ -65,6 +65,43 @@ RateCap is the only project among these six that implements all four of Stripe's
 14. Cloudflare operates as an edge/CDN network rather than a per-instance service process, so a "local worker utilization" comparison doesn't map cleanly onto its architecture; no equivalent mechanism was found in the official rate-limiting docs checked (same sources as footnote 3).
 15. Sentinel's System Adaptive Protection sheds load based on local system metrics (`load1`, CPU usage, and locally-tracked QPS/response-time), computed entirely within the instance applying the rule — no remote call. [System adaptive protection](https://sentinelguard.io/en-us/docs/system-adaptive-protection.html).
 
+## Benchmarks
+
+The numbers below measure two request paths through the demo stack: RateCap's Tier 1 (`Allow()`, a single token-bucket check) and Tier 2 (`Acquire()` followed by `Ticket.Release()`, a concurrency-limit reservation plus its later release — this necessarily also passes through Tier 1 and Tier 3 ahead of it in the pipeline). These are a one-time, dated snapshot from a single machine running the full `sidecar` + `core` + Redis stack over Docker Compose on one host — useful for relative/directional comparison and regression-tracking over time (e.g. "did a later change make Tier 2's overhead meaningfully worse"), not a production capacity-planning number. A real deployment has network hops between services, different hardware, and different traffic shapes that this same-host setup doesn't capture.
+
+**Environment:** 2026-07-18, Apple M4 (Darwin arm64), Docker Engine 29.5.3, Go 1.26.2.
+
+**Reproduce it yourself:**
+
+```bash
+cd deploy
+bash generate-demo-certs.sh
+docker compose -f docker-compose.yml -f docker-compose.bench.yml up --build -d
+cd ../cli && go build -o /tmp/ratecapctl .
+
+# Tier 1 — Allow()
+/tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix bench-tier1
+
+# Tier 2 — Acquire()/Release()
+/tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix bench-tier2 --acquire
+
+cd ../deploy && docker compose -f docker-compose.yml -f docker-compose.bench.yml down
+```
+
+**Tier 1 — `Allow()`** (concurrency 50, 20,000 requests):
+
+| Total requests | Elapsed | Throughput | P50 | P99 | P99.9 |
+| --- | --- | --- | --- | --- | --- |
+| 20,000 | 1725ms | 11,591.4 req/s | 3.88ms | 11.65ms | 28.02ms |
+
+**Tier 2 — `Acquire()`/`Release()`** (concurrency 50, 20,000 requests):
+
+| Total requests | Elapsed | Throughput | P50 | P99 | P99.9 |
+| --- | --- | --- | --- | --- | --- |
+| 20,000 | 5395ms | 3,706.7 req/s | 12.96ms | 25.67ms | 34.25ms |
+
+Tier 2's higher latency and lower throughput reflect its extra round trip: `Acquire()` reserves a slot (a Tier 2 check plus a Tier 3 check, both real Redis-backed operations) and the benchmark client then calls `Release()` to free it — genuinely more work per request than Tier 1's single token-bucket check.
+
 ## Design docs
 
 - [`docs/superpowers/specs/2026-07-13-ratecap-v1-design.md`](docs/superpowers/specs/2026-07-13-ratecap-v1-design.md) — full v1 design
