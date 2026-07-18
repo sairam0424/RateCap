@@ -1,0 +1,9 @@
+services:
+  core:
+    volumes:
+      - ./ratecap-bench.yaml:/etc/ratecap/ratecap.yaml
+      - ./certs:/etc/ratecap/certs:ro
+
+  sidecar:
+    environment:
+      RATECAP_MAX_INFLIGHT_REQUESTS: "1000"
