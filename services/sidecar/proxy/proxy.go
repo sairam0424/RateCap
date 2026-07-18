@@ -101,7 +101,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch action {
-	case ratecapv1.Action_ALLOW, ratecapv1.Action_SHADOW_LOG:
+	case ratecapv1.Action_ALLOW, ratecapv1.Action_SHADOW_LOG, ratecapv1.Action_QUEUE:
 		w.WriteHeader(http.StatusOK)
 	case ratecapv1.Action_REJECT_429:
 		w.Header().Set("Retry-After-Ms", strconv.FormatInt(resp.RetryAfterMs, 10))
@@ -121,6 +121,8 @@ func actionLabel(a ratecapv1.Action) string {
 		return "reject_503"
 	case ratecapv1.Action_SHADOW_LOG:
 		return "shadow_log"
+	case ratecapv1.Action_QUEUE:
+		return "queue"
 	default:
 		return "unknown"
 	}

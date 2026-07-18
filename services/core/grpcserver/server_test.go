@@ -54,6 +54,22 @@ func TestCheckRateLimit_ReturnsAllowDecision(t *testing.T) {
 	}
 }
 
+func TestCheckRateLimit_ConvertsQueueActionToProtoQueue(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.QUEUE, Tier: "concurrency_limiter"}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+
+	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:  "user-1",
+		Cost: 1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Action != ratecapv1.Action_QUEUE {
+		t.Errorf("expected Action_QUEUE, got %v", resp.Action)
+	}
+}
+
 func TestCheckRateLimit_ReturnsTierFromDecision(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "rate_limiter"}}
 	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})

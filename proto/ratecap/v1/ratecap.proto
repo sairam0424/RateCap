@@ -14,6 +14,7 @@ enum Action {
   REJECT_429 = 1;
   REJECT_503 = 2;
   SHADOW_LOG = 3;
+  QUEUE = 4;
 }
 
 enum Priority {

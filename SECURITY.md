@@ -41,6 +41,10 @@ When reporting, please include:
 - mTLS is optional and off by default specifically so upgrading an existing deployment never silently breaks it. It is recommended, not required, for v2. If your deployment cannot guarantee a private network and cannot yet configure certificates, treat this as an open risk and prioritize enabling mTLS.
 - Certificate provisioning is the operator's responsibility — RateCap does not issue, rotate, or manage certificates. See `deploy/generate-demo-certs.sh` for how the docker-compose demo generates throwaway, 1-day-validity certs; do not reuse that script's output anywhere but the demo.
 
+### Bounded queueing backlog is per-instance (v2 Phase 3)
+
+`ConcurrencyLimiter`'s optional bounded queueing (`queueing_enabled`, off by default) enforces `max_backlog` independently on each `ratecap-core` instance — it is not coordinated across a fleet. An operator running N core instances with the same `max_backlog` value should expect up to `max_backlog × N` total in-flight queued requests fleet-wide, not a single shared ceiling. This is a known, accepted limitation (matching Tier 4's existing local-only worker shedder), not an oversight — if your deployment needs a fleet-wide coordinated backlog ceiling, do not rely on `max_backlog` alone to provide it.
+
 ## Priority Claims (v1)
 
 `ratecap-sidecar` resolves each request's priority (`critical` or `sheddable`) from the caller-supplied `x-ratecap-priority` HTTP header with no authentication, no cost, and no verification (`services/sidecar/proxy/priority.go`). Tier 3 (the Fleet Usage Load Shedder) uses this value to decide whether a request is checked against the full fleet capacity (`critical`) or a reduced, shed-first capacity (`sheddable`). This is v1's explicit, intentional trust boundary:

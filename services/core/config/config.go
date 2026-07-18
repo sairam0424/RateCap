@@ -17,6 +17,10 @@ type ConcurrencyLimiterConfig struct {
 	DefaultMaxConcurrent int   `yaml:"default_max_concurrent"`
 	MaxRequestDurationMs int64 `yaml:"max_request_duration_ms"`
 	ShadowMode           bool  `yaml:"shadow_mode"`
+	QueueingEnabled      bool  `yaml:"queueing_enabled"`
+	MaxBacklog           int   `yaml:"max_backlog"`
+	MaxQueueWaitMs       int64 `yaml:"max_queue_wait_ms"`
+	PollIntervalMs       int64 `yaml:"poll_interval_ms"`
 }
 
 type FleetShedderConfig struct {
@@ -59,6 +63,20 @@ func (c *Config) Validate() error {
 	}
 	if c.Tiers.FleetShedder.ReservedCriticalPct < 0 || c.Tiers.FleetShedder.ReservedCriticalPct > 100 {
 		return fmt.Errorf("tiers.fleet_shedder.reserved_critical_pct must be between 0 and 100 inclusive, got %d", c.Tiers.FleetShedder.ReservedCriticalPct)
+	}
+	if c.Tiers.ConcurrencyLimiter.QueueingEnabled {
+		if c.Tiers.ConcurrencyLimiter.MaxBacklog <= 0 {
+			return fmt.Errorf("tiers.concurrency_limiter.max_backlog must be > 0 when queueing_enabled is true, got %d", c.Tiers.ConcurrencyLimiter.MaxBacklog)
+		}
+		if c.Tiers.ConcurrencyLimiter.MaxQueueWaitMs <= 0 {
+			return fmt.Errorf("tiers.concurrency_limiter.max_queue_wait_ms must be > 0 when queueing_enabled is true, got %d", c.Tiers.ConcurrencyLimiter.MaxQueueWaitMs)
+		}
+		if c.Tiers.ConcurrencyLimiter.PollIntervalMs <= 0 {
+			return fmt.Errorf("tiers.concurrency_limiter.poll_interval_ms must be > 0 when queueing_enabled is true, got %d", c.Tiers.ConcurrencyLimiter.PollIntervalMs)
+		}
+		if c.Tiers.ConcurrencyLimiter.PollIntervalMs > c.Tiers.ConcurrencyLimiter.MaxQueueWaitMs {
+			return fmt.Errorf("tiers.concurrency_limiter.poll_interval_ms (%d) must not exceed max_queue_wait_ms (%d) — a waiter would never get a chance to poll before timing out", c.Tiers.ConcurrencyLimiter.PollIntervalMs, c.Tiers.ConcurrencyLimiter.MaxQueueWaitMs)
+		}
 	}
 	return nil
 }

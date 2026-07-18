@@ -9,6 +9,7 @@ const (
 	REJECT_429
 	REJECT_503
 	SHADOW_LOG
+	QUEUE
 )
 
 type Priority int

@@ -9,6 +9,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/ratecap/core/limiter"
 	"github.com/ratecap/core/store"
 )
 
@@ -258,5 +259,43 @@ func TestIncrConcurrent_ConcurrentAtomicity(t *testing.T) {
 
 	if allowedCount != cap {
 		t.Fatalf("expected exactly %d allowed under concurrent load, got %d", cap, allowedCount)
+	}
+}
+
+func TestConcurrencyLimiter_QueueingPollsRealRedisUntilSlotFrees(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client)
+	l := limiter.NewConcurrencyLimiter(s, 1, 30000, false, true, 5, 3000, 50)
+	ctx := context.Background()
+
+	_, token, err := s.IncrConcurrent(ctx, "queue-integration-key", 1, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error occupying the cap: %v", err)
+	}
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		if err := s.DecrConcurrent(ctx, "queue-integration-key", token); err != nil {
+			t.Errorf("unexpected error releasing: %v", err)
+		}
+	}()
+
+	start := time.Now()
+	d, err := l.Check(ctx, limiter.Request{Key: "queue-integration-key"})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.QUEUE {
+		t.Fatalf("expected QUEUE once the real Redis-backed slot frees, got %v", d.Action)
+	}
+	if len(d.Reservations) != 1 || d.Reservations[0].Token == "" {
+		t.Fatalf("expected a real reservation token from the successful poll against real Redis, got %+v", d.Reservations)
+	}
+	if elapsed < 150*time.Millisecond {
+		t.Fatalf("expected to wait for the real slot to free (~200ms), got %v — suspiciously fast, is this actually polling Redis?", elapsed)
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("expected to succeed well before the 3s MaxQueueWaitMs deadline, took %v", elapsed)
 	}
 }

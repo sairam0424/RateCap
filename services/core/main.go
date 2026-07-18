@@ -65,6 +65,10 @@ func main() {
 		cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent,
 		cfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs,
 		cfg.Tiers.ConcurrencyLimiter.ShadowMode,
+		cfg.Tiers.ConcurrencyLimiter.QueueingEnabled,
+		cfg.Tiers.ConcurrencyLimiter.MaxBacklog,
+		cfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs,
+		cfg.Tiers.ConcurrencyLimiter.PollIntervalMs,
 	)
 
 	fleetShedder := limiter.NewFleetShedder(
@@ -83,7 +87,7 @@ func main() {
 			return
 		}
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
-		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode)
+		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode, newCfg.Tiers.ConcurrencyLimiter.QueueingEnabled, newCfg.Tiers.ConcurrencyLimiter.MaxBacklog, newCfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs, newCfg.Tiers.ConcurrencyLimiter.PollIntervalMs)
 		fleetShedder.Reconfigure(newCfg.Tiers.FleetShedder.DefaultMaxConcurrent, newCfg.Tiers.FleetShedder.ReservedCriticalPct, newCfg.Tiers.FleetShedder.MaxRequestDurationMs, newCfg.Tiers.FleetShedder.ShadowMode)
 	})
 	if err != nil {
