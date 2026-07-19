@@ -168,6 +168,30 @@ func TestFleetShedder_ShadowModeReservesAndCoercesToShadowLog(t *testing.T) {
 	}
 }
 
+func TestFleetShedder_ShadowModeStillReservesSlot(t *testing.T) {
+	fs := newFakeFleetStore()
+	l := limiter.NewFleetShedder(fs, 1, 20, 30000, true)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		d, err := l.Check(ctx, limiter.Request{Key: "user-4", Priority: limiter.Critical})
+		if err != nil {
+			t.Fatalf("unexpected error on request %d: %v", i, err)
+		}
+		if i > 0 {
+			if d.Action != limiter.SHADOW_LOG {
+				t.Fatalf("request %d: expected SHADOW_LOG, got %v", i, d.Action)
+			}
+			if len(d.Reservations) != 1 || d.Reservations[0].Token == "" {
+				t.Fatalf("request %d: expected a reserved token even in shadow mode, got %+v", i, d.Reservations)
+			}
+			if err := fs.DecrConcurrent(ctx, d.Reservations[0].Key, d.Reservations[0].Token); err != nil {
+				t.Fatalf("request %d: unexpected error releasing shadow-mode reservation: %v", i, err)
+			}
+		}
+	}
+}
+
 func TestFleetShedder_SkipReservationsBypassesEntirely(t *testing.T) {
 	fs := newFakeFleetStore()
 	l := limiter.NewFleetShedder(fs, 1, 20, 30000, false)
@@ -220,6 +244,48 @@ func TestFleetShedder_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestFleetShedder_SheddableEffectiveCapRounding(t *testing.T) {
+	tests := []struct {
+		name                string
+		cap                 int
+		reservedCriticalPct int
+		wantSheddableCap    int
+	}{
+		{name: "non-exact-dividing percentage rounds down", cap: 10, reservedCriticalPct: 33, wantSheddableCap: 6},
+		{name: "reservedCriticalPct=100 reserves entire cap for critical", cap: 10, reservedCriticalPct: 100, wantSheddableCap: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := newFakeFleetStore()
+			l := limiter.NewFleetShedder(fs, tt.cap, tt.reservedCriticalPct, 30000, false)
+			ctx := context.Background()
+
+			for i := 0; i < tt.wantSheddableCap; i++ {
+				d, err := l.Check(ctx, limiter.Request{Key: "user-1", Priority: limiter.Sheddable})
+				if err != nil {
+					t.Fatalf("unexpected error on request %d: %v", i, err)
+				}
+				if d.Action != limiter.ALLOW {
+					t.Fatalf("sheddable request %d: expected ALLOW (sheddable cap is %d), got %v", i, tt.wantSheddableCap, d.Action)
+				}
+			}
+
+			d, err := l.Check(ctx, limiter.Request{Key: "user-1", Priority: limiter.Sheddable})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantSheddableCap == 0 {
+				if d.Action != limiter.REJECT_503 {
+					t.Fatalf("expected REJECT_503 for the very first sheddable request when sheddable cap is 0, got %v", d.Action)
+				}
+			} else if d.Action != limiter.REJECT_503 {
+				t.Fatalf("request %d (1 past sheddable cap %d): expected REJECT_503, got %v", tt.wantSheddableCap, tt.wantSheddableCap, d.Action)
+			}
+		})
+	}
 }
 
 func TestFleetShedder_ReconfigureChangesReservedPct(t *testing.T) {

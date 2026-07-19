@@ -51,6 +51,72 @@ tiers:
 	}
 }
 
+func TestWatch_DebouncesRapidFireEvents(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`)
+
+	changes := make(chan *config.Config, 10)
+	stop, err := config.Watch(path, func(cfg *config.Config) {
+		changes <- cfg
+	})
+	if err != nil {
+		t.Fatalf("unexpected error starting watch: %v", err)
+	}
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	firstContents := `
+sync_rate: 10
+tiers:
+  rate_limiter:
+    default_rate: 200
+    default_burst: 1000
+    shadow_mode: true
+`
+	secondContents := `
+sync_rate: 20
+tiers:
+  rate_limiter:
+    default_rate: 300
+    default_burst: 1500
+    shadow_mode: false
+`
+	if err := os.WriteFile(path, []byte(firstContents), 0644); err != nil {
+		t.Fatalf("failed to write first rapid update: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(path, []byte(secondContents), 0644); err != nil {
+		t.Fatalf("failed to write second rapid update: %v", err)
+	}
+
+	var cfg *config.Config
+	select {
+	case cfg = <-changes:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for debounced config reload callback")
+	}
+
+	select {
+	case extra := <-changes:
+		t.Fatalf("expected exactly one onChange call for two rapid-fire writes, got a second callback with SyncRate=%d", extra.SyncRate)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	if cfg.SyncRate != 20 {
+		t.Errorf("expected debounced reload to reflect the LAST write (SyncRate=20), got %d", cfg.SyncRate)
+	}
+	if cfg.Tiers.RateLimiter.DefaultRate != 300 {
+		t.Errorf("expected debounced reload to reflect the LAST write (DefaultRate=300), got %d", cfg.Tiers.RateLimiter.DefaultRate)
+	}
+}
+
 func TestWatch_SkipsInvalidConfigWithoutCrashing(t *testing.T) {
 	path := writeTempConfig(t, `
 sync_rate: 5

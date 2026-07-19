@@ -26,3 +26,7 @@ func (s *Shedder) Allow() bool {
 func (s *Shedder) Release() {
 	s.inflight.Add(-1)
 }
+
+func (s *Shedder) InFlight() int64 {
+	return s.inflight.Load()
+}

@@ -155,6 +155,28 @@ func TestConcurrencyLimiter_SkipConcurrencyLimitBypassesTheCapEntirely(t *testin
 	}
 }
 
+func TestConcurrencyLimiter_RejectionSetsRetryAfterMsToMaxDuration(t *testing.T) {
+	fs := newFakeConcurrencyStore()
+	const maxDurationMs = 30000
+	l := limiter.NewConcurrencyLimiter(fs, 1, maxDurationMs, false, false, 0, 0, 0)
+	ctx := context.Background()
+
+	if _, err := l.Check(ctx, limiter.Request{Key: "user-retry"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	d, err := l.Check(ctx, limiter.Request{Key: "user-retry"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.REJECT_429 {
+		t.Fatalf("expected REJECT_429, got %v", d.Action)
+	}
+	if d.RetryAfterMs != maxDurationMs {
+		t.Fatalf("expected RetryAfterMs to equal maxDurationMs (%d), got %d", maxDurationMs, d.RetryAfterMs)
+	}
+}
+
 func TestConcurrencyLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T) {
 	fs := newFakeConcurrencyStore()
 	l := limiter.NewConcurrencyLimiter(fs, 10, 30000, false, false, 0, 0, 0)

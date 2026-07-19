@@ -18,12 +18,21 @@ var ShadowWouldRejectTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "Total number of decisions that would have rejected/shed the request but were coerced to allow by shadow mode.",
 }, []string{"tier"})
 
+var WorkerInFlightRequests = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "ratecap_worker_inflight_requests",
+	Help: "Current number of in-flight requests held by the Tier 4 worker shedder on this sidecar instance.",
+})
+
 func RecordDecision(tier, action string) {
 	DecisionsTotal.WithLabelValues(tier, action).Inc()
 }
 
 func RecordShadowWouldReject(tier string) {
 	ShadowWouldRejectTotal.WithLabelValues(tier).Inc()
+}
+
+func SetWorkerInFlight(v int64) {
+	WorkerInFlightRequests.Set(float64(v))
 }
 
 func Handler() http.Handler {

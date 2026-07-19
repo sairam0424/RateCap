@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -43,6 +45,27 @@ func TestServeHTTP_AllowReturns200(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_LogsRealErrorWhenUpstreamCheckFails(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	client := &fakeRatecapClient{err: errors.New("core unavailable")}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if !strings.Contains(buf.String(), "core unavailable") {
+		t.Errorf("expected the real upstream error to be logged, got:\n%s", buf.String())
 	}
 }
 
@@ -354,6 +377,85 @@ func TestServeHTTP_RejectsNonGETMethod(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_RealWorkerShedSetsShedTierHeaderTo4(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-RateCap-Shed-Tier"); got != "4" {
+		t.Errorf("expected X-RateCap-Shed-Tier=4, got %q", got)
+	}
+}
+
+func TestServeHTTP_Reject503FromCoreSetsShedTierHeaderTo3(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_503, Tier: "fleet_shedder"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-RateCap-Shed-Tier"); got != "3" {
+		t.Errorf("expected X-RateCap-Shed-Tier=3, got %q", got)
+	}
+}
+
+func TestServeHTTP_AllowedRequestDoesNotSetShedTierHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-RateCap-Shed-Tier"); got != "" {
+		t.Errorf("expected no X-RateCap-Shed-Tier header on an allowed request, got %q", got)
+	}
+}
+
+type gaugeSnapshotClient struct {
+	fakeRatecapClient
+	gaugeDuringCall float64
+}
+
+func (f *gaugeSnapshotClient) CheckRateLimit(ctx context.Context, in *ratecapv1.CheckRateLimitRequest, opts ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error) {
+	f.gaugeDuringCall = testutil.ToFloat64(metrics.WorkerInFlightRequests)
+	return f.fakeRatecapClient.CheckRateLimit(ctx, in, opts...)
+}
+
+func TestServeHTTP_UpdatesWorkerInFlightGaugeOnAllowAndRelease(t *testing.T) {
+	client := &gaugeSnapshotClient{fakeRatecapClient: fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}}
+	shedder := worker.NewShedder(1000)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.gaugeDuringCall != 1 {
+		t.Errorf("expected ratecap_worker_inflight_requests == 1 while the request was held by the shedder, got %v", client.gaugeDuringCall)
+	}
+
+	got := testutil.ToFloat64(metrics.WorkerInFlightRequests)
+	if got != float64(shedder.InFlight()) {
+		t.Errorf("expected ratecap_worker_inflight_requests to match shedder.InFlight() (%d) after ServeHTTP returns and releases its slot, got %v", shedder.InFlight(), got)
+	}
+}
+
 func TestServeHTTP_ShedsWithoutCallingClientWhenOverInFlightLimit(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	shedder := worker.NewShedder(0)
@@ -533,6 +635,27 @@ func TestReleaseHandler_ServeHTTP_UpstreamErrorReturns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_LogsRealErrorWhenUpstreamReleaseFails(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	client := &fakeReleaseClient{err: errors.New("core unavailable")}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if !strings.Contains(buf.String(), "core unavailable") {
+		t.Errorf("expected the real upstream error to be logged, got:\n%s", buf.String())
 	}
 }
 
