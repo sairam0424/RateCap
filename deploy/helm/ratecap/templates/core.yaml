@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-core
+spec:
+  replicas: {{ .Values.core.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-core
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-core
+    spec:
+      containers:
+        - name: core
+          image: "{{ .Values.core.image.repository }}:{{ .Values.core.image.tag }}"
+          imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.core.grpcPort }}
+            - containerPort: {{ .Values.core.healthPort }}
+          env:
+            - name: RATECAP_CONFIG_PATH
+              value: /etc/ratecap/ratecap.yaml
+            - name: RATECAP_REDIS_ADDR
+              value: "{{ .Release.Name }}-redis:{{ .Values.redis.port }}"
+            - name: RATECAP_GRPC_ADDR
+              value: ":{{ .Values.core.grpcPort }}"
+            - name: RATECAP_HEALTH_ADDR
+              value: ":{{ .Values.core.healthPort }}"
+            - name: RATECAP_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sharedSecret.existingSecretName }}
+                  key: {{ .Values.sharedSecret.existingSecretKey }}
+            {{- if .Values.tls.enabled }}
+            - name: RATECAP_TLS_CERT_PATH
+              value: /etc/ratecap/certs/tls.crt
+            - name: RATECAP_TLS_KEY_PATH
+              value: /etc/ratecap/certs/tls.key
+            - name: RATECAP_TLS_CA_PATH
+              value: /etc/ratecap/certs/ca.crt
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ratecap/ratecap.yaml
+              subPath: ratecap.yaml
+            {{- if .Values.tls.enabled }}
+            - name: tls-certs
+              mountPath: /etc/ratecap/certs
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            grpc:
+              port: {{ .Values.core.healthPort }}
+          livenessProbe:
+            grpc:
+              port: {{ .Values.core.healthPort }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config
+        {{- if .Values.tls.enabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.core.existingSecretName }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-core
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-core
+  ports:
+    - name: grpc
+      port: {{ .Values.core.grpcPort }}
+      targetPort: {{ .Values.core.grpcPort }}
+    - name: health
+      port: {{ .Values.core.healthPort }}
+      targetPort: {{ .Values.core.healthPort }}

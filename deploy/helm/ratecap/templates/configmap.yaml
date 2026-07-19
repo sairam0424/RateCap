@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  ratecap.yaml: |
+{{ .Values.config.yaml | indent 4 }}

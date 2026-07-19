@@ -1,0 +1,16 @@
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100000
+    default_burst: 100000
+    shadow_mode: false
+  concurrency_limiter:
+    default_max_concurrent: 1000
+    max_request_duration_ms: 30000
+    shadow_mode: false
+  fleet_shedder:
+    default_max_concurrent: 1000
+    reserved_critical_pct: 40
+    max_request_duration_ms: 30000
+    default_priority: sheddable
+    shadow_mode: false

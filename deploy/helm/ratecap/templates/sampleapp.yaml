@@ -1,0 +1,37 @@
+{{- if .Values.sampleapp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-sampleapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-sampleapp
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-sampleapp
+    spec:
+      containers:
+        - name: sampleapp
+          image: "{{ .Values.sampleapp.image.repository }}:{{ .Values.sampleapp.image.tag }}"
+          imagePullPolicy: {{ .Values.sampleapp.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.sampleapp.port }}
+          env:
+            - name: RATECAP_SIDECAR_ADDR
+              value: "http://{{ .Release.Name }}-sidecar:{{ .Values.sidecar.port }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-sampleapp
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-sampleapp
+  ports:
+    - port: {{ .Values.sampleapp.port }}
+      targetPort: {{ .Values.sampleapp.port }}
+{{- end }}

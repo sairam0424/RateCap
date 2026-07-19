@@ -19,6 +19,10 @@ import (
 	"github.com/ratecap/sidecar/worker"
 )
 
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
 func resolveMaxInflight(envVal string, defaultVal int64) int64 {
 	if envVal == "" {
 		return defaultVal
@@ -82,6 +86,7 @@ func main() {
 	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
 	mux.Handle("/release", proxy.NewReleaseHandler(client))
 	mux.Handle("/metrics", metrics.Handler())
+	mux.HandleFunc("/healthz", healthzHandler)
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {
