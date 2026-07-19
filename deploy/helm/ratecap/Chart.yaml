@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ratecap
+description: A faithful, open-source recreation of Stripe's four-tier rate-limiter and load-shedder architecture
+type: application
+version: 0.1.0
+appVersion: "2.2.0"
