@@ -78,3 +78,16 @@ jobs:
       - name: Test
         working-directory: packages/sdks/python
         run: python -m unittest discover -s tests -v
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint deploy/helm/ratecap
+
+      - name: Template
+        run: helm template test-release deploy/helm/ratecap --set sharedSecret.existingSecretName=test-secret --set sampleapp.enabled=true
