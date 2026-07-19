@@ -104,11 +104,11 @@ func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, 
 	}
 
 	if !queueingEnabled {
-		return Decision{Action: REJECT_429, Tier: "concurrency_limiter"}, nil
+		return Decision{Action: REJECT_429, RetryAfterMs: maxDurationMs, Tier: "concurrency_limiter"}, nil
 	}
 
 	if !l.acquireBacklogSlot(maxBacklog) {
-		return Decision{Action: REJECT_429, Tier: "concurrency_limiter"}, nil
+		return Decision{Action: REJECT_429, RetryAfterMs: maxDurationMs, Tier: "concurrency_limiter"}, nil
 	}
 	defer l.backlog.Add(-1)
 
@@ -142,7 +142,7 @@ func (l *ConcurrencyLimiter) pollUntilAllowedOrDeadline(ctx context.Context, req
 		case <-ctx.Done():
 			return Decision{}, ctx.Err()
 		case <-deadline.C:
-			return Decision{Action: REJECT_429, Tier: "concurrency_limiter"}, nil
+			return Decision{Action: REJECT_429, RetryAfterMs: maxDurationMs, Tier: "concurrency_limiter"}, nil
 		case <-ticker.C:
 			allowed, token, err := l.store.IncrConcurrent(ctx, req.Key, cap, maxDurationMs)
 			if err != nil {
