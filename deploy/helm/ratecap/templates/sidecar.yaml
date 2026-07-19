@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-sidecar
+spec:
+  replicas: {{ .Values.sidecar.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-sidecar
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-sidecar
+    spec:
+      containers:
+        - name: sidecar
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.sidecar.port }}
+          env:
+            - name: RATECAP_CORE_ADDR
+              value: "{{ .Release.Name }}-core:{{ .Values.core.grpcPort }}"
+            - name: RATECAP_SIDECAR_ADDR
+              value: ":{{ .Values.sidecar.port }}"
+            - name: RATECAP_MAX_INFLIGHT_REQUESTS
+              value: "{{ .Values.sidecar.maxInflightRequests }}"
+            - name: RATECAP_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sharedSecret.existingSecretName }}
+                  key: {{ .Values.sharedSecret.existingSecretKey }}
+            {{- if .Values.tls.enabled }}
+            - name: RATECAP_TLS_CERT_PATH
+              value: /etc/ratecap/certs/tls.crt
+            - name: RATECAP_TLS_KEY_PATH
+              value: /etc/ratecap/certs/tls.key
+            - name: RATECAP_TLS_CA_PATH
+              value: /etc/ratecap/certs/ca.crt
+            {{- end }}
+          {{- if .Values.tls.enabled }}
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /etc/ratecap/certs
+              readOnly: true
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.sidecar.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.sidecar.port }}
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.sidecar.existingSecretName }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-sidecar
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-sidecar
+  ports:
+    - port: {{ .Values.sidecar.port }}
+      targetPort: {{ .Values.sidecar.port }}
