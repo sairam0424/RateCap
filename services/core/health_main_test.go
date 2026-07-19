@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,12 +38,33 @@ tiers:
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", ".")
+	// `go run .` execs the compiled binary as a subprocess of the "go run"
+	// wrapper; killing the wrapper does not reliably kill that subprocess
+	// (SIGKILL is not forwarded), which leaks an orphaned server bound to
+	// the health port on every test run. Building the binary once and
+	// exec'ing it directly makes cmd.Process the real server process, so
+	// cmd.Process.Kill() actually terminates it.
+	binPath := filepath.Join(dir, "core-under-test")
+	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
+	if output, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to build test binary: %v\n%s", err, output)
+	}
+
+	healthLis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to reserve an ephemeral health port: %v", err)
+	}
+	healthAddr := healthLis.Addr().String()
+	if err := healthLis.Close(); err != nil {
+		t.Fatalf("failed to release the reserved health port: %v", err)
+	}
+
+	cmd := exec.Command(binPath)
 	cmd.Env = append(os.Environ(),
 		"RATECAP_CONFIG_PATH="+configPath,
 		"RATECAP_SHARED_SECRET=test-secret",
 		"RATECAP_GRPC_ADDR=:0",
-		"RATECAP_HEALTH_ADDR=:19191",
+		"RATECAP_HEALTH_ADDR="+healthAddr,
 		"RATECAP_REDIS_ADDR=127.0.0.1:1",
 	)
 	if err := cmd.Start(); err != nil {
@@ -54,9 +76,8 @@ tiers:
 	}()
 
 	var conn *grpc.ClientConn
-	var err error
 	for i := 0; i < 20; i++ {
-		conn, err = grpc.NewClient("127.0.0.1:19191", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err = grpc.NewClient(healthAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err == nil {
 			break
 		}
