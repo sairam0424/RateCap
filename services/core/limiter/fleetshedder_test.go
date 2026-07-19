@@ -168,6 +168,30 @@ func TestFleetShedder_ShadowModeReservesAndCoercesToShadowLog(t *testing.T) {
 	}
 }
 
+func TestFleetShedder_ShadowModeStillReservesSlot(t *testing.T) {
+	fs := newFakeFleetStore()
+	l := limiter.NewFleetShedder(fs, 1, 20, 30000, true)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		d, err := l.Check(ctx, limiter.Request{Key: "user-4", Priority: limiter.Critical})
+		if err != nil {
+			t.Fatalf("unexpected error on request %d: %v", i, err)
+		}
+		if i > 0 {
+			if d.Action != limiter.SHADOW_LOG {
+				t.Fatalf("request %d: expected SHADOW_LOG, got %v", i, d.Action)
+			}
+			if len(d.Reservations) != 1 || d.Reservations[0].Token == "" {
+				t.Fatalf("request %d: expected a reserved token even in shadow mode, got %+v", i, d.Reservations)
+			}
+			if err := fs.DecrConcurrent(ctx, d.Reservations[0].Key, d.Reservations[0].Token); err != nil {
+				t.Fatalf("request %d: unexpected error releasing shadow-mode reservation: %v", i, err)
+			}
+		}
+	}
+}
+
 func TestFleetShedder_SkipReservationsBypassesEntirely(t *testing.T) {
 	fs := newFakeFleetStore()
 	l := limiter.NewFleetShedder(fs, 1, 20, 30000, false)
