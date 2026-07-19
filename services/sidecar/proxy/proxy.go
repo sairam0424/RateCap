@@ -53,6 +53,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				metrics.RecordDecision("worker_shedder", "reject_503")
 				metrics.SetWorkerInFlight(h.shedder.InFlight())
 				decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+				w.Header().Set("X-RateCap-Shed-Tier", "4")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
@@ -113,6 +114,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After-Ms", strconv.FormatInt(resp.RetryAfterMs, 10))
 		w.WriteHeader(http.StatusTooManyRequests)
 	case ratecapv1.Action_REJECT_503:
+		w.Header().Set("X-RateCap-Shed-Tier", "3")
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 }

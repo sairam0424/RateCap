@@ -354,6 +354,55 @@ func TestServeHTTP_RejectsNonGETMethod(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_RealWorkerShedSetsShedTierHeaderTo4(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	shedder := worker.NewShedder(0)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-RateCap-Shed-Tier"); got != "4" {
+		t.Errorf("expected X-RateCap-Shed-Tier=4, got %q", got)
+	}
+}
+
+func TestServeHTTP_Reject503FromCoreSetsShedTierHeaderTo3(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_503, Tier: "fleet_shedder"}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-RateCap-Shed-Tier"); got != "3" {
+		t.Errorf("expected X-RateCap-Shed-Tier=3, got %q", got)
+	}
+}
+
+func TestServeHTTP_AllowedRequestDoesNotSetShedTierHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-RateCap-Shed-Tier"); got != "" {
+		t.Errorf("expected no X-RateCap-Shed-Tier header on an allowed request, got %q", got)
+	}
+}
+
 type gaugeSnapshotClient struct {
 	fakeRatecapClient
 	gaugeDuringCall float64
