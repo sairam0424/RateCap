@@ -79,6 +79,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Priority:         protoPriority,
 	})
 	if err != nil {
+		log.Printf("sidecar: /check: upstream call failed: %v", err)
 		http.Error(w, "upstream check failed", http.StatusInternalServerError)
 		return
 	}
@@ -162,6 +163,7 @@ func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
 	if err != nil {
+		log.Printf("sidecar: /release: upstream call failed: %v", err)
 		http.Error(w, "upstream release failed", http.StatusInternalServerError)
 		return
 	}
