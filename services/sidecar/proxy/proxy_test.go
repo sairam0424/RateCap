@@ -354,6 +354,36 @@ func TestServeHTTP_RejectsNonGETMethod(t *testing.T) {
 	}
 }
 
+type gaugeSnapshotClient struct {
+	fakeRatecapClient
+	gaugeDuringCall float64
+}
+
+func (f *gaugeSnapshotClient) CheckRateLimit(ctx context.Context, in *ratecapv1.CheckRateLimitRequest, opts ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error) {
+	f.gaugeDuringCall = testutil.ToFloat64(metrics.WorkerInFlightRequests)
+	return f.fakeRatecapClient.CheckRateLimit(ctx, in, opts...)
+}
+
+func TestServeHTTP_UpdatesWorkerInFlightGaugeOnAllowAndRelease(t *testing.T) {
+	client := &gaugeSnapshotClient{fakeRatecapClient: fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}}
+	shedder := worker.NewShedder(1000)
+	h := proxy.NewHandler(client, proxy.Sheddable, shedder)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.gaugeDuringCall != 1 {
+		t.Errorf("expected ratecap_worker_inflight_requests == 1 while the request was held by the shedder, got %v", client.gaugeDuringCall)
+	}
+
+	got := testutil.ToFloat64(metrics.WorkerInFlightRequests)
+	if got != float64(shedder.InFlight()) {
+		t.Errorf("expected ratecap_worker_inflight_requests to match shedder.InFlight() (%d) after ServeHTTP returns and releases its slot, got %v", shedder.InFlight(), got)
+	}
+}
+
 func TestServeHTTP_ShedsWithoutCallingClientWhenOverInFlightLimit(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	shedder := worker.NewShedder(0)

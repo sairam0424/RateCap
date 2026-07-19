@@ -178,6 +178,29 @@ func TestShedder_StressAllowReleaseInterleaving(t *testing.T) {
 	}
 }
 
+func TestShedder_InFlightReflectsCurrentCount(t *testing.T) {
+	s := worker.NewShedder(3)
+
+	if s.InFlight() != 0 {
+		t.Fatalf("expected InFlight() == 0 initially, got %d", s.InFlight())
+	}
+
+	s.Allow()
+	if s.InFlight() != 1 {
+		t.Fatalf("expected InFlight() == 1 after one Allow(), got %d", s.InFlight())
+	}
+
+	s.Allow()
+	if s.InFlight() != 2 {
+		t.Fatalf("expected InFlight() == 2 after two Allow() calls, got %d", s.InFlight())
+	}
+
+	s.Release()
+	if s.InFlight() != 1 {
+		t.Fatalf("expected InFlight() == 1 after one Release(), got %d", s.InFlight())
+	}
+}
+
 // TestShedder_BoundaryAtMaxMinusOneAndMax exercises the exact boundary the
 // CAS loop's comparison (current >= s.max) must get right: the transition
 // from one slot remaining (current == max-1) to zero slots remaining

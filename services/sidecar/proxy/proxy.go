@@ -51,16 +51,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			shedKey := r.URL.Query().Get("key")
 			if !shadow.GlobalOverrideEnabled() {
 				metrics.RecordDecision("worker_shedder", "reject_503")
+				metrics.SetWorkerInFlight(h.shedder.InFlight())
 				decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 			metrics.RecordDecision("worker_shedder", "reject_503")
 			metrics.RecordShadowWouldReject("worker_shedder")
+			metrics.SetWorkerInFlight(h.shedder.InFlight())
 			decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
 			log.Printf("worker shedder: would have shed request, shadow mode active")
 		} else {
-			defer h.shedder.Release()
+			metrics.SetWorkerInFlight(h.shedder.InFlight())
+			defer func() {
+				h.shedder.Release()
+				metrics.SetWorkerInFlight(h.shedder.InFlight())
+			}()
 		}
 	}
 
