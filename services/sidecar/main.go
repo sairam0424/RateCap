@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -93,8 +94,17 @@ func main() {
 		listenAddr = ":8080"
 	}
 
+	server := &http.Server{
+		Addr:              listenAddr,
+		Handler:           mux,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
 	log.Printf("ratecap-sidecar listening on %s, forwarding to core at %s", listenAddr, coreAddr)
-	if err := http.ListenAndServe(listenAddr, mux); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("sidecar http server failed: %v", err)
 	}
 }
