@@ -27,6 +27,22 @@ func TestRecordShadowWouldReject_IncrementsCounterForTier(t *testing.T) {
 	}
 }
 
+func TestSetWorkerInFlight_SetsGaugeToGivenValue(t *testing.T) {
+	metrics.SetWorkerInFlight(7)
+
+	got := testutil.ToFloat64(metrics.WorkerInFlightRequests)
+	if got != 7 {
+		t.Errorf("expected ratecap_worker_inflight_requests == 7, got %v", got)
+	}
+
+	metrics.SetWorkerInFlight(2)
+
+	got = testutil.ToFloat64(metrics.WorkerInFlightRequests)
+	if got != 2 {
+		t.Errorf("expected ratecap_worker_inflight_requests == 2 after a second set, got %v", got)
+	}
+}
+
 func TestHandler_ServesPrometheusExpositionFormat(t *testing.T) {
 	metrics.RecordDecision("worker_shedder", "reject_503")
 
