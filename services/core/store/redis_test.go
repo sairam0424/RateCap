@@ -262,6 +262,57 @@ func TestIncrConcurrent_ConcurrentAtomicity(t *testing.T) {
 	}
 }
 
+func TestIncrConcurrent_MixedPriorityConcurrentAtomicity(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client)
+	ctx := context.Background()
+
+	const attemptsPerGroup = 50
+	const fullCap = 10
+	const reducedCap = 4
+
+	type result struct {
+		reduced bool
+		allowed bool
+	}
+	results := make(chan result, attemptsPerGroup*2)
+
+	for i := 0; i < attemptsPerGroup; i++ {
+		go func() {
+			allowed, _, err := s.IncrConcurrent(ctx, "fleet-mixed-key", fullCap, 30000)
+			if err != nil {
+				t.Errorf("unexpected error on critical-priority call: %v", err)
+			}
+			results <- result{reduced: false, allowed: allowed}
+		}()
+		go func() {
+			allowed, _, err := s.IncrConcurrent(ctx, "fleet-mixed-key", reducedCap, 30000)
+			if err != nil {
+				t.Errorf("unexpected error on sheddable-priority call: %v", err)
+			}
+			results <- result{reduced: true, allowed: allowed}
+		}()
+	}
+
+	reducedAllowed, totalAllowed := 0, 0
+	for i := 0; i < attemptsPerGroup*2; i++ {
+		r := <-results
+		if r.allowed {
+			totalAllowed++
+			if r.reduced {
+				reducedAllowed++
+			}
+		}
+	}
+
+	if reducedAllowed > reducedCap {
+		t.Fatalf("expected at most %d sheddable-cap-passed calls to succeed, got %d", reducedCap, reducedAllowed)
+	}
+	if totalAllowed > fullCap {
+		t.Fatalf("expected at most %d total calls to succeed across both priority groups combined, got %d", fullCap, totalAllowed)
+	}
+}
+
 func TestConcurrencyLimiter_QueueingPollsRealRedisUntilSlotFrees(t *testing.T) {
 	client := startRedis(t)
 	s := store.NewRedisStore(client)
