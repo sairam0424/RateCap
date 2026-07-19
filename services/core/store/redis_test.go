@@ -175,6 +175,74 @@ func TestDecrConcurrent_FreesSlotForNextRequest(t *testing.T) {
 	}
 }
 
+func TestDecrConcurrent_BogusTokenIsNoOp(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client)
+	ctx := context.Background()
+
+	if err := s.DecrConcurrent(ctx, "concurrent-key-bogus", "never-issued-token"); err != nil {
+		t.Fatalf("unexpected error releasing a bogus token: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		allowed, token, err := s.IncrConcurrent(ctx, "concurrent-key-bogus", 2, 30000)
+		if err != nil {
+			t.Fatalf("unexpected error on request %d: %v", i, err)
+		}
+		if !allowed {
+			t.Fatalf("request %d should be allowed, cap is untouched by the bogus release", i)
+		}
+		if token == "" {
+			t.Fatalf("request %d: expected non-empty token", i)
+		}
+	}
+
+	allowed, _, err := s.IncrConcurrent(ctx, "concurrent-key-bogus", 2, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allowed {
+		t.Fatal("3rd request should be rejected, cap is 2 and the bogus release freed nothing")
+	}
+}
+
+func TestDecrConcurrent_DoubleReleaseIsNoOp(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client)
+	ctx := context.Background()
+
+	_, token, err := s.IncrConcurrent(ctx, "concurrent-key-double-release", 1, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error acquiring: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected non-empty token")
+	}
+
+	if err := s.DecrConcurrent(ctx, "concurrent-key-double-release", token); err != nil {
+		t.Fatalf("unexpected error on first release: %v", err)
+	}
+	if err := s.DecrConcurrent(ctx, "concurrent-key-double-release", token); err != nil {
+		t.Fatalf("unexpected error on second release: %v", err)
+	}
+
+	allowed, _, err := s.IncrConcurrent(ctx, "concurrent-key-double-release", 1, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Fatal("expected exactly one freed slot to be reusable after the double release")
+	}
+
+	allowed, _, err = s.IncrConcurrent(ctx, "concurrent-key-double-release", 1, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allowed {
+		t.Fatal("expected only one subsequent slot to be freed, not two — double release must not free the slot twice")
+	}
+}
+
 func TestIncrConcurrent_ReapsStaleEntriesPastMaxDuration(t *testing.T) {
 	client := startRedis(t)
 	s := store.NewRedisStore(client)
