@@ -76,31 +76,31 @@ tiers:
 	}()
 
 	var conn *grpc.ClientConn
-	for i := 0; i < 20; i++ {
-		conn, err = grpc.NewClient(healthAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	conn, err = grpc.NewClient(healthAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		t.Fatalf("failed to dial health server: %v", err)
+		t.Fatalf("failed to construct health client: %v", err)
 	}
 	defer conn.Close()
 
+	// The health binary is a freshly compiled process started concurrently
+	// with this repo's other packages under `go test ./...`, so its actual
+	// startup time varies with system load (observed flaky under -race
+	// alongside store's Docker-container-backed tests) — poll for up to 10s
+	// rather than a fixed handful of short-timeout attempts.
 	client := healthpb.NewHealthClient(conn)
 	var resp *healthpb.HealthCheckResponse
-	for i := 0; i < 20; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		resp, err = client.Check(ctx, &healthpb.HealthCheckRequest{})
 		cancel()
 		if err == nil {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil {
-		t.Fatalf("health check failed: %v", err)
+		if time.Now().After(deadline) {
+			t.Fatalf("health check failed after retrying until deadline: %v", err)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	if resp.Status != healthpb.HealthCheckResponse_SERVING {
 		t.Errorf("expected SERVING, got %v", resp.Status)
