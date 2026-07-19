@@ -8,6 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
@@ -116,6 +118,29 @@ func main() {
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
 	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore))
+
+	// The health service is served on its own plaintext, unauthenticated
+	// listener rather than the main gRPC port: Kubernetes' native grpc probe
+	// action has no TLS/client-cert support, so a probe on the mTLS-enforcing
+	// main port would always fail once mTLS is enabled.
+	healthAddr := os.Getenv("RATECAP_HEALTH_ADDR")
+	if healthAddr == "" {
+		healthAddr = ":9091"
+	}
+	healthLis, err := net.Listen("tcp", healthAddr)
+	if err != nil {
+		log.Fatalf("failed to listen on %s: %v", healthAddr, err)
+	}
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthGRPCServer := grpc.NewServer()
+	healthpb.RegisterHealthServer(healthGRPCServer, healthServer)
+	go func() {
+		log.Printf("ratecap-core health server listening on %s", healthAddr)
+		if err := healthGRPCServer.Serve(healthLis); err != nil {
+			log.Fatalf("health grpc server failed: %v", err)
+		}
+	}()
 
 	log.Printf("ratecap-core listening on %s", listenAddr)
 	if err := grpcServer.Serve(lis); err != nil {
