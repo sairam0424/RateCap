@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -43,6 +45,27 @@ func TestServeHTTP_AllowReturns200(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_LogsRealErrorWhenUpstreamCheckFails(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	client := &fakeRatecapClient{err: errors.New("core unavailable")}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(1000))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if !strings.Contains(buf.String(), "core unavailable") {
+		t.Errorf("expected the real upstream error to be logged, got:\n%s", buf.String())
 	}
 }
 
@@ -612,6 +635,27 @@ func TestReleaseHandler_ServeHTTP_UpstreamErrorReturns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_LogsRealErrorWhenUpstreamReleaseFails(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	client := &fakeReleaseClient{err: errors.New("core unavailable")}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if !strings.Contains(buf.String(), "core unavailable") {
+		t.Errorf("expected the real upstream error to be logged, got:\n%s", buf.String())
 	}
 }
 
