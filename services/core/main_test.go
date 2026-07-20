@@ -81,7 +81,7 @@ tiers:
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
-	redisStore := store.NewRedisStore(redisClient)
+	redisStore := store.NewRedisStore(redisClient, []byte("test-signing-key"))
 
 	rateLimiter := limiter.NewTokenBucketLimiter(
 		redisStore,
