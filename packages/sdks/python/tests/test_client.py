@@ -22,13 +22,13 @@ from fake_sidecar import FakeSidecar
 
 class TestAllow(unittest.TestCase):
     def test_returns_true_on_200(self):
-        with FakeSidecar(lambda method, path, query: (200, {})) as sidecar:
+        with FakeSidecar(lambda method, path, query, headers: (200, {})) as sidecar:
             client = Client(sidecar.url)
             result = client.allow("user-1")
             self.assertTrue(result.allowed)
 
     def test_returns_false_with_retry_after_on_429(self):
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             return 429, {"Retry-After-Ms": "750"}
 
         with FakeSidecar(handler) as sidecar:
@@ -40,7 +40,7 @@ class TestAllow(unittest.TestCase):
     def test_requests_skip_reservations(self):
         captured = {}
 
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             captured.update(query)
             return 200, {}
 
@@ -52,7 +52,7 @@ class TestAllow(unittest.TestCase):
 
 class TestAcquire(unittest.TestCase):
     def test_acquire_returns_allowed_true_on_200(self):
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             if path == "/check":
                 return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
             return 200, {}
@@ -65,7 +65,7 @@ class TestAcquire(unittest.TestCase):
     def test_acquire_does_not_send_skip_reservations(self):
         captured = {}
 
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             if path == "/check":
                 captured.update(query)
                 return 200, {}
@@ -79,7 +79,7 @@ class TestAcquire(unittest.TestCase):
     def test_release_releases_every_reservation(self):
         release_calls = []
 
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             if path == "/check":
                 return 200, {
                     "Concurrency-Token-0": "tok-abc",
@@ -88,7 +88,9 @@ class TestAcquire(unittest.TestCase):
                     "Concurrency-Key-1": "fleet",
                 }
             if path == "/release":
-                release_calls.append(dict(query))
+                release_calls.append(
+                    {"key": headers.get("X-Ratecap-Concurrency-Key"), "token": headers.get("X-Ratecap-Concurrency-Token")}
+                )
                 return 200, {}
             return 404, {}
 
@@ -102,10 +104,31 @@ class TestAcquire(unittest.TestCase):
         self.assertEqual(by_key["user-1"], "tok-abc")
         self.assertEqual(by_key["fleet"], "tok-xyz")
 
+    def test_release_reads_from_header_not_query(self):
+        release_calls = []
+
+        def handler(method, path, query, headers):
+            if path == "/check":
+                return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
+            if path == "/release":
+                release_calls.append({"query": dict(query), "header_key": headers.get("X-Ratecap-Concurrency-Key"), "header_token": headers.get("X-Ratecap-Concurrency-Token")})
+                return 200, {}
+            return 404, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            ticket = client.acquire("user-1")
+            ticket.release()
+
+        self.assertEqual(len(release_calls), 1)
+        self.assertEqual(release_calls[0]["query"], {}, "expected /release to send nothing via the query string")
+        self.assertEqual(release_calls[0]["header_key"], "user-1")
+        self.assertEqual(release_calls[0]["header_token"], "tok-abc")
+
     def test_release_is_noop_when_no_token_was_issued(self):
         release_called = []
 
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             if path == "/release":
                 release_called.append(True)
                 return 200, {}
@@ -119,7 +142,7 @@ class TestAcquire(unittest.TestCase):
         self.assertEqual(release_called, [])
 
     def test_release_raises_when_a_reservation_fails_to_release(self):
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             if path == "/check":
                 return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
             if path == "/release":
@@ -135,7 +158,7 @@ class TestAcquire(unittest.TestCase):
     def test_context_manager_auto_releases(self):
         release_calls = []
 
-        def handler(method, path, query):
+        def handler(method, path, query, headers):
             if path == "/check":
                 return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
             if path == "/release":

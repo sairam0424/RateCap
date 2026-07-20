@@ -137,7 +137,7 @@ func TestAcquire_ReturnsRejectedTicketWithRetryAfterOn429(t *testing.T) {
 }
 
 func TestTicket_Release_UsesServerSuppliedConcurrencyKeyNotCallerKey(t *testing.T) {
-	var capturedQuery url.Values
+	var capturedHeaders http.Header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/check":
@@ -145,7 +145,7 @@ func TestTicket_Release_UsesServerSuppliedConcurrencyKeyNotCallerKey(t *testing.
 			w.Header().Set("Concurrency-Key-0", "server-assigned-key")
 			w.WriteHeader(http.StatusOK)
 		case "/release":
-			capturedQuery = r.URL.Query()
+			capturedHeaders = r.Header
 			w.WriteHeader(http.StatusOK)
 		}
 	}))
@@ -161,19 +161,19 @@ func TestTicket_Release_UsesServerSuppliedConcurrencyKeyNotCallerKey(t *testing.
 		t.Fatalf("unexpected error releasing: %v", err)
 	}
 
-	if capturedQuery == nil {
+	if capturedHeaders == nil {
 		t.Fatal("expected /release to be called")
 	}
-	if got := capturedQuery.Get("key"); got != "server-assigned-key" {
+	if got := capturedHeaders.Get("X-RateCap-Concurrency-Key"); got != "server-assigned-key" {
 		t.Errorf("expected key=server-assigned-key (from Concurrency-Key-0 header, not the caller's Acquire key), got %q", got)
 	}
-	if got := capturedQuery.Get("token"); got != "tok-abc" {
+	if got := capturedHeaders.Get("X-RateCap-Concurrency-Token"); got != "tok-abc" {
 		t.Errorf("expected token=tok-abc, got %q", got)
 	}
 }
 
 func TestTicket_Release_ReleasesEveryReservation(t *testing.T) {
-	var releaseCalls []url.Values
+	var releaseCalls []http.Header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/check":
@@ -183,7 +183,7 @@ func TestTicket_Release_ReleasesEveryReservation(t *testing.T) {
 			w.Header().Set("Concurrency-Key-1", "fleet")
 			w.WriteHeader(http.StatusOK)
 		case "/release":
-			releaseCalls = append(releaseCalls, r.URL.Query())
+			releaseCalls = append(releaseCalls, r.Header)
 			w.WriteHeader(http.StatusOK)
 		}
 	}))
@@ -204,8 +204,8 @@ func TestTicket_Release_ReleasesEveryReservation(t *testing.T) {
 	}
 
 	byKey := map[string]string{}
-	for _, q := range releaseCalls {
-		byKey[q.Get("key")] = q.Get("token")
+	for _, h := range releaseCalls {
+		byKey[h.Get("X-RateCap-Concurrency-Key")] = h.Get("X-RateCap-Concurrency-Token")
 	}
 	if byKey["user-1"] != "tok-abc" {
 		t.Errorf("expected a release call for key=user-1 token=tok-abc, got %+v", byKey)
