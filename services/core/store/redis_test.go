@@ -2,6 +2,10 @@ package store_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +16,8 @@ import (
 	"github.com/ratecap/core/limiter"
 	"github.com/ratecap/core/store"
 )
+
+var testSigningKey = []byte("test-signing-key-do-not-use-in-production")
 
 func startRedis(t *testing.T) *redis.Client {
 	ctx := context.Background()
@@ -42,7 +48,7 @@ func startRedis(t *testing.T) *redis.Client {
 
 func TestCheckAndDecrement_AllowsWithinBurst(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
@@ -58,7 +64,7 @@ func TestCheckAndDecrement_AllowsWithinBurst(t *testing.T) {
 
 func TestCheckAndDecrement_RejectsOverBurst(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
@@ -81,7 +87,7 @@ func TestCheckAndDecrement_RejectsOverBurst(t *testing.T) {
 
 func TestCheckAndDecrement_ConcurrentAtomicity(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	const attempts = 50
@@ -112,7 +118,7 @@ func TestCheckAndDecrement_ConcurrentAtomicity(t *testing.T) {
 
 func TestIncrConcurrent_AllowsUpToCap(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
@@ -140,9 +146,35 @@ func TestIncrConcurrent_AllowsUpToCap(t *testing.T) {
 	}
 }
 
+func TestIncrConcurrent_ReturnsHMACSignedToken(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	allowed, token, err := s.IncrConcurrent(ctx, "concurrent-key-signed", 1, 30000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Fatal("expected the request to be allowed")
+	}
+
+	uuidPart, sigPart, found := strings.Cut(token, ".")
+	if !found {
+		t.Fatalf("expected token to be of the form <uuid>.<hex-hmac>, got %q", token)
+	}
+
+	mac := hmac.New(sha256.New, testSigningKey)
+	mac.Write([]byte(uuidPart))
+	expectedSig := hex.EncodeToString(mac.Sum(nil))
+	if sigPart != expectedSig {
+		t.Fatalf("token signature does not match HMAC-SHA256(uuid, signingKey): got %q, want %q", sigPart, expectedSig)
+	}
+}
+
 func TestDecrConcurrent_FreesSlotForNextRequest(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	var tokens []string
@@ -177,7 +209,7 @@ func TestDecrConcurrent_FreesSlotForNextRequest(t *testing.T) {
 
 func TestDecrConcurrent_BogusTokenIsNoOp(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	if err := s.DecrConcurrent(ctx, "concurrent-key-bogus", "never-issued-token"); err != nil {
@@ -208,7 +240,7 @@ func TestDecrConcurrent_BogusTokenIsNoOp(t *testing.T) {
 
 func TestDecrConcurrent_DoubleReleaseIsNoOp(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	_, token, err := s.IncrConcurrent(ctx, "concurrent-key-double-release", 1, 30000)
@@ -245,7 +277,7 @@ func TestDecrConcurrent_DoubleReleaseIsNoOp(t *testing.T) {
 
 func TestIncrConcurrent_ReapsStaleEntriesPastMaxDuration(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	allowed, _, err := s.IncrConcurrent(ctx, "concurrent-key-reap", 1, 100)
@@ -272,7 +304,7 @@ func TestIncrConcurrent_ReapsStaleEntriesPastMaxDuration(t *testing.T) {
 
 func TestCheckAndDecrementAndIncrConcurrent_SameKeyDoNotCollide(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	allowed, _, err := s.CheckAndDecrement(ctx, "shared-user", 10, 5, 1)
@@ -301,7 +333,7 @@ func TestCheckAndDecrementAndIncrConcurrent_SameKeyDoNotCollide(t *testing.T) {
 
 func TestIncrConcurrent_ConcurrentAtomicity(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	const attempts = 50
@@ -332,7 +364,7 @@ func TestIncrConcurrent_ConcurrentAtomicity(t *testing.T) {
 
 func TestIncrConcurrent_MixedPriorityConcurrentAtomicity(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
 	const attemptsPerGroup = 50
@@ -383,7 +415,7 @@ func TestIncrConcurrent_MixedPriorityConcurrentAtomicity(t *testing.T) {
 
 func TestConcurrencyLimiter_QueueingPollsRealRedisUntilSlotFrees(t *testing.T) {
 	client := startRedis(t)
-	s := store.NewRedisStore(client)
+	s := store.NewRedisStore(client, testSigningKey)
 	l := limiter.NewConcurrencyLimiter(s, 1, 30000, false, true, 5, 3000, 50)
 	ctx := context.Background()
 
