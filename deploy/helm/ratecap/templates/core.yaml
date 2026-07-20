@@ -33,6 +33,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.sharedSecret.existingSecretName }}
                   key: {{ .Values.sharedSecret.existingSecretKey }}
+            - name: RATECAP_CONCURRENCY_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.concurrencySigningKey.existingSecretName }}
+                  key: {{ .Values.concurrencySigningKey.existingSecretKey }}
             {{- if .Values.tls.enabled }}
             - name: RATECAP_TLS_CERT_PATH
               value: /etc/ratecap/certs/tls.crt

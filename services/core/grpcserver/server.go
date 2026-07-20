@@ -2,7 +2,12 @@ package grpcserver
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"log"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,12 +27,31 @@ type concurrencyReleaser interface {
 
 type Server struct {
 	ratecapv1.UnimplementedRatecapServiceServer
-	pipeline checker
-	releaser concurrencyReleaser
+	pipeline   checker
+	releaser   concurrencyReleaser
+	signingKey []byte
 }
 
-func NewServer(p checker, releaser concurrencyReleaser) *Server {
-	return &Server{pipeline: p, releaser: releaser}
+func NewServer(p checker, releaser concurrencyReleaser, signingKey []byte) *Server {
+	return &Server{pipeline: p, releaser: releaser, signingKey: signingKey}
+}
+
+// verifyToken confirms a Tier 2 concurrency token was actually issued by
+// this core instance (the HMAC-SHA256 suffix over the UUID, matching how
+// store.IncrConcurrent signs it) before it's allowed to release a slot —
+// closing issue #12's forgeable-bearer-token gap. It does not bind the
+// token to a specific caller; any authenticated caller can still release
+// any other authenticated caller's valid token, matching this repo's
+// existing shared-secret trust model (see SECURITY.md).
+func verifyToken(token string, signingKey []byte) bool {
+	uuidPart, sigPart, found := strings.Cut(token, ".")
+	if !found {
+		return false
+	}
+	mac := hmac.New(sha256.New, signingKey)
+	mac.Write([]byte(uuidPart))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return subtle.ConstantTimeCompare([]byte(sigPart), []byte(expected)) == 1
 }
 
 func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLimitRequest) (*ratecapv1.CheckRateLimitResponse, error) {
@@ -60,6 +84,10 @@ func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLim
 }
 
 func (s *Server) ReleaseConcurrency(ctx context.Context, req *ratecapv1.ReleaseConcurrencyRequest) (*ratecapv1.ReleaseConcurrencyResponse, error) {
+	if !verifyToken(req.ConcurrencyToken, s.signingKey) {
+		log.Printf("grpcserver: ReleaseConcurrency: rejected invalid/forged token for key %q", req.Key)
+		return nil, status.Error(codes.PermissionDenied, "invalid concurrency token")
+	}
 	if err := s.releaser.DecrConcurrent(ctx, req.Key, req.ConcurrencyToken); err != nil {
 		return nil, internalError("ReleaseConcurrency", err)
 	}

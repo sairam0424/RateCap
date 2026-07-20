@@ -45,6 +45,11 @@ func main() {
 		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-core refuses to start without gRPC authentication configured")
 	}
 
+	concurrencySigningKey := os.Getenv("RATECAP_CONCURRENCY_SIGNING_KEY")
+	if concurrencySigningKey == "" {
+		log.Fatalf("RATECAP_CONCURRENCY_SIGNING_KEY must be set — ratecap-core refuses to start without Tier 2 concurrency-token signing configured")
+	}
+
 	tlsCertPath := os.Getenv("RATECAP_TLS_CERT_PATH")
 	tlsKeyPath := os.Getenv("RATECAP_TLS_KEY_PATH")
 	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
@@ -53,7 +58,7 @@ func main() {
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
-	redisStore := store.NewRedisStore(redisClient)
+	redisStore := store.NewRedisStore(redisClient, []byte(concurrencySigningKey))
 
 	rateLimiter := limiter.NewTokenBucketLimiter(
 		redisStore,
@@ -117,7 +122,7 @@ func main() {
 		log.Printf("ratecap-core: mTLS enabled")
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore, []byte(concurrencySigningKey)))
 
 	// The health service is served on its own plaintext, unauthenticated
 	// listener rather than the main gRPC port: Kubernetes' native grpc probe

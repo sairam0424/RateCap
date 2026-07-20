@@ -51,6 +51,17 @@ When reporting, please include:
 
 This is architecturally correct — the global override is intentionally a pure response layer, matching the documented Envoy pattern, and adding a reservation here would mean the override doing tier-specific limiter work it was never designed to do. But it means concurrency accounting and metrics become inaccurate for the duration the global override is active: operators should treat a globally-shadow-coerced `200` as **not actually holding a concurrency slot**, and should not use Redis-side concurrency counts as a source of truth for real in-flight load while `RATECAP_SHADOW_MODE=true` is set.
 
+### Tier 2 concurrency tokens are signed and header-transported (fixed in v2.3.2)
+
+Prior to v2.3.2, `ratecap-sidecar`'s `/release` endpoint accepted the Tier 2 concurrency token and key as plaintext URL query parameters, and `ReleaseConcurrency` performed no verification that a token was ever actually issued — a real vulnerability class with documented precedent in production software (e.g. Portainer CVE-2026-44883, nhost CVE-2026-34969: both accepted a bearer-style token via `?token=...`, which is recorded in reverse-proxy access logs, browser history, and HTTP `Referer` headers before the application itself can react to it).
+
+v2.3.2 fixes both halves:
+
+- The token and key now travel as request headers (`X-RateCap-Concurrency-Key`, `X-RateCap-Concurrency-Token`) on `/release`, never in the query string. This is a breaking wire-contract change for any direct HTTP caller bypassing the Go/Python SDKs — see `CHANGELOG.md`.
+- Every Tier 2 concurrency token is now an HMAC-SHA256-signed value (`<uuid>.<hex-signature>`, signed with `RATECAP_CONCURRENCY_SIGNING_KEY`, a new required env var on `ratecap-core`). `ReleaseConcurrency` verifies the signature before releasing a slot, rejecting a forged or tampered token with `codes.PermissionDenied`.
+
+**Residual limitation, by design:** this signature proves a token was genuinely issued by this `ratecap-core` instance — it does not bind the token to the specific caller who acquired it. Any authenticated sidecar client (auth is service-to-service via the shared secret, not per-end-user) that somehow obtains a valid signed token can still release it, the same way any authenticated caller could before this fix. This matches RateCap's existing shared-secret trust model (see Network Transport Security above) rather than introducing a new one; true per-caller ownership binding would require a caller-identity concept RateCap does not have, and is out of scope for this fix.
+
 ## Priority Claims (v1)
 
 `ratecap-sidecar` resolves each request's priority (`critical` or `sheddable`) from the caller-supplied `x-ratecap-priority` HTTP header with no authentication, no cost, and no verification (`services/sidecar/proxy/priority.go`). Tier 3 (the Fleet Usage Load Shedder) uses this value to decide whether a request is checked against the full fleet capacity (`critical`) or a reduced, shed-first capacity (`sheddable`). This is v1's explicit, intentional trust boundary:

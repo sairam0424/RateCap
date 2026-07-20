@@ -594,7 +594,9 @@ func TestReleaseHandler_ServeHTTP_CallsReleaseConcurrencyWithKeyAndToken(t *test
 	client := &fakeReleaseClient{}
 	h := proxy.NewReleaseHandler(client)
 
-	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Concurrency-Key", "user-1")
+	req.Header.Set("X-RateCap-Concurrency-Token", "tok-abc")
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -610,11 +612,34 @@ func TestReleaseHandler_ServeHTTP_CallsReleaseConcurrencyWithKeyAndToken(t *test
 	}
 }
 
+func TestReleaseHandler_ServeHTTP_ReadsFromHeaderNotQuery(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release?key=query-key&token=query-token", nil)
+	req.Header.Set("X-RateCap-Concurrency-Key", "header-key")
+	req.Header.Set("X-RateCap-Concurrency-Token", "header-token")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if client.lastKey != "header-key" {
+		t.Errorf("expected the header value to win, got key=%q — the query-string path must be dead, not just unused", client.lastKey)
+	}
+	if client.lastToken != "header-token" {
+		t.Errorf("expected the header value to win, got token=%q — the query-string path must be dead, not just unused", client.lastToken)
+	}
+}
+
 func TestReleaseHandler_ServeHTTP_MissingKeyReturns400(t *testing.T) {
 	client := &fakeReleaseClient{}
 	h := proxy.NewReleaseHandler(client)
 
-	req := httptest.NewRequest(http.MethodPost, "/release?token=tok-abc", nil)
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Concurrency-Token", "tok-abc")
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -628,7 +653,9 @@ func TestReleaseHandler_ServeHTTP_UpstreamErrorReturns500(t *testing.T) {
 	client := &fakeReleaseClient{err: errors.New("core unavailable")}
 	h := proxy.NewReleaseHandler(client)
 
-	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Concurrency-Key", "user-1")
+	req.Header.Set("X-RateCap-Concurrency-Token", "tok-abc")
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -646,7 +673,9 @@ func TestReleaseHandler_ServeHTTP_LogsRealErrorWhenUpstreamReleaseFails(t *testi
 	client := &fakeReleaseClient{err: errors.New("core unavailable")}
 	h := proxy.NewReleaseHandler(client)
 
-	req := httptest.NewRequest(http.MethodPost, "/release?key=user-1&token=tok-abc", nil)
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Concurrency-Key", "user-1")
+	req.Header.Set("X-RateCap-Concurrency-Token", "tok-abc")
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -663,7 +692,9 @@ func TestReleaseHandler_ServeHTTP_RejectsNonPOSTMethod(t *testing.T) {
 	client := &fakeReleaseClient{}
 	h := proxy.NewReleaseHandler(client)
 
-	req := httptest.NewRequest(http.MethodGet, "/release?key=user-1&token=tok-abc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/release", nil)
+	req.Header.Set("X-RateCap-Concurrency-Key", "user-1")
+	req.Header.Set("X-RateCap-Concurrency-Token", "tok-abc")
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)

@@ -63,6 +63,7 @@ tiers:
 	cmd.Env = append(os.Environ(),
 		"RATECAP_CONFIG_PATH="+configPath,
 		"RATECAP_SHARED_SECRET=test-secret",
+		"RATECAP_CONCURRENCY_SIGNING_KEY=test-signing-key",
 		"RATECAP_GRPC_ADDR=:0",
 		"RATECAP_HEALTH_ADDR="+healthAddr,
 		"RATECAP_REDIS_ADDR=127.0.0.1:1",
