@@ -90,4 +90,4 @@ jobs:
         run: helm lint deploy/helm/ratecap
 
       - name: Template
-        run: helm template test-release deploy/helm/ratecap --set sharedSecret.existingSecretName=test-secret --set sampleapp.enabled=true
+        run: helm template test-release deploy/helm/ratecap --set sharedSecret.existingSecretName=test-secret --set concurrencySigningKey.existingSecretName=test-signing-key --set sampleapp.enabled=true

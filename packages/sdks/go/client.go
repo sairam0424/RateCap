@@ -78,15 +78,14 @@ func (t *Ticket) Release(ctx context.Context) error {
 }
 
 func (t *Ticket) releaseOne(ctx context.Context, r reservation) error {
-	params := url.Values{}
-	params.Set("key", r.key)
-	params.Set("token", r.tok)
-	reqURL := t.client.sidecarAddr + "/release?" + params.Encode()
+	reqURL := t.client.sidecarAddr + "/release"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("X-RateCap-Concurrency-Key", r.key)
+	req.Header.Set("X-RateCap-Concurrency-Token", r.tok)
 
 	resp, err := t.client.httpClient.Do(req)
 	if err != nil {

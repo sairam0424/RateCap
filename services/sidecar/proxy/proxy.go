@@ -162,12 +162,12 @@ func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := r.URL.Query().Get("key")
+	key := r.Header.Get("X-RateCap-Concurrency-Key")
 	if key == "" {
 		http.Error(w, "missing key parameter", http.StatusBadRequest)
 		return
 	}
-	token := r.URL.Query().Get("token")
+	token := r.Header.Get("X-RateCap-Concurrency-Token")
 
 	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
 	if err != nil {

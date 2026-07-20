@@ -81,9 +81,15 @@ class Client:
         return reservations
 
     def _release_one(self, reservation):
-        query = urllib.parse.urlencode({"key": reservation.key, "token": reservation.token})
-        url = f"{self._sidecar_addr}/release?{query}"
-        req = urllib.request.Request(url, method="POST")
+        url = f"{self._sidecar_addr}/release"
+        req = urllib.request.Request(
+            url,
+            method="POST",
+            headers={
+                "X-RateCap-Concurrency-Key": reservation.key,
+                "X-RateCap-Concurrency-Token": reservation.token,
+            },
+        )
         with urllib.request.urlopen(req) as resp:
             if resp.status != 200:
                 raise RuntimeError(f"release failed with status {resp.status}")

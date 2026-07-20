@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- Tier 2 concurrency tokens are now HMAC-SHA256-signed (new required `RATECAP_CONCURRENCY_SIGNING_KEY` env var on `ratecap-core`) and `ReleaseConcurrency` verifies a token's signature before releasing a slot, rejecting a forged/tampered token with `codes.PermissionDenied` — closes a forgeable-bearer-token gap with real-world precedent (Portainer CVE-2026-44883, nhost CVE-2026-34969).
+- `/release`'s `key` and `token` now travel as request headers (`X-RateCap-Concurrency-Key`, `X-RateCap-Concurrency-Token`) instead of URL query parameters, which were at risk of leaking into access logs, proxy logs, and `Referer` headers. **Breaking change**: any direct HTTP caller of `/release` bypassing the Go or Python SDK must migrate to the new headers; both SDKs are updated in this release and require no caller-visible changes beyond upgrading.
+
 ### Added
 
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.

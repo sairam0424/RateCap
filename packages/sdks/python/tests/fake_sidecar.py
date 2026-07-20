@@ -23,7 +23,7 @@ class FakeSidecar:
                 parsed = urlparse(self.path)
                 query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
                 server.requests.append((self.command, parsed.path, query))
-                status, headers = server._handler(self.command, parsed.path, query)
+                status, headers = server._handler(self.command, parsed.path, query, dict(self.headers))
                 self.send_response(status)
                 for key, value in headers.items():
                     self.send_header(key, value)

@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -20,16 +23,30 @@ type RedisStore struct {
 	client            *redis.Client
 	tokenBucket       *redis.Script
 	concurrentLimiter *redis.Script
+	signingKey        []byte
 }
 
 var _ StateStore = (*RedisStore)(nil)
 
-func NewRedisStore(client *redis.Client) *RedisStore {
+func NewRedisStore(client *redis.Client, signingKey []byte) *RedisStore {
 	return &RedisStore{
 		client:            client,
 		tokenBucket:       redis.NewScript(tokenBucketScript),
 		concurrentLimiter: redis.NewScript(concurrentLimiterScript),
+		signingKey:        signingKey,
 	}
+}
+
+// signToken embeds an HMAC-SHA256 signature into the returned token
+// (<uuid>.<hex-hmac>) so ReleaseConcurrency can verify a token was actually
+// issued by this core instance before releasing it — closing the
+// forgeable-bearer-token gap in issue #12. The Lua script and DecrConcurrent
+// both treat the whole string as an opaque Redis set member, so this needs
+// zero changes on that side.
+func signToken(candidateUUID string, signingKey []byte) string {
+	mac := hmac.New(sha256.New, signingKey)
+	mac.Write([]byte(candidateUUID))
+	return candidateUUID + "." + hex.EncodeToString(mac.Sum(nil))
 }
 
 // rateLimiterKeyPrefix and concurrencyKeyPrefix keep the two tiers' Redis
@@ -65,7 +82,7 @@ func (s *RedisStore) CheckAndDecrement(ctx context.Context, key string, rate, bu
 func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, maxDurationMs int64) (bool, string, error) {
 	key = concurrencyKeyPrefix + key
 	now := time.Now().UnixMilli()
-	candidateToken := uuid.NewString()
+	candidateToken := signToken(uuid.NewString(), s.signingKey)
 
 	result, err := s.concurrentLimiter.Run(ctx, s.client, []string{key}, cap, maxDurationMs, now, candidateToken).Slice()
 	if err != nil {
