@@ -86,6 +86,23 @@ v1 is locked to Stripe's exact four mechanisms. Do not add a fifth limiting mech
 - Target `develop`, never `main` directly.
 - Request review before merging.
 
+## Releasing the Python SDK to PyPI (one-time setup)
+
+`.github/workflows/publish-python-sdk.yml` publishes `packages/sdks/python` to PyPI on every `python-sdk-v*` tag push, using [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) — there is no `PYPI_API_TOKEN` secret to manage. Before the *first* tag push, a repo admin must complete two one-time steps, or the workflow's OIDC exchange fails:
+
+1. **Register a pending publisher on PyPI.** The `ratecap` project doesn't exist on PyPI yet, so this is configured from your PyPI account (not a project) — log in to [pypi.org](https://pypi.org), go to **Account settings -> Publishing**, and add a pending publisher with:
+   - PyPI project name: `ratecap`
+   - Owner: `sairam0424`
+   - Repository name: `RateCap`
+   - Workflow filename: `publish-python-sdk.yml`
+   - Environment name: `pypi`
+
+   PyPI reserves the name but does not create the project until the first successful publish; if someone else claims `ratecap` on PyPI before that first tag push, this pending publisher is invalidated and must be re-added.
+
+2. **Create the `pypi` GitHub Actions environment.** The workflow runs under `environment: pypi`, and `pypa/gh-action-pypi-publish` needs that environment's OIDC token to match what you registered in step 1. It already exists on `sairam0424/RateCap` (`Settings -> Environments`) — verify it's still present before cutting the first `python-sdk-v*` tag; if it's ever deleted, recreate it (name must be exactly `pypi`) before retrying.
+
+Skipping either step makes the first tag push fail with an OIDC authentication error from PyPI, not a build error — `python -m build` and the workflow's YAML are already verified working independently of this setup.
+
 ## Code of conduct
 
 This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
