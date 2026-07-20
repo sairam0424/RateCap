@@ -2,6 +2,9 @@ package grpcserver_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -14,6 +17,14 @@ import (
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
 )
+
+var testSigningKey = []byte("test-signing-key-do-not-use-in-production")
+
+func signTestToken(uuid string, signingKey []byte) string {
+	mac := hmac.New(sha256.New, signingKey)
+	mac.Write([]byte(uuid))
+	return uuid + "." + hex.EncodeToString(mac.Sum(nil))
+}
 
 type fakeLimiter struct {
 	decision limiter.Decision
@@ -40,7 +51,7 @@ func (f *fakeReleaser) DecrConcurrent(_ context.Context, key, token string) erro
 
 func TestCheckRateLimit_ReturnsAllowDecision(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -56,7 +67,7 @@ func TestCheckRateLimit_ReturnsAllowDecision(t *testing.T) {
 
 func TestCheckRateLimit_ConvertsQueueActionToProtoQueue(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.QUEUE, Tier: "concurrency_limiter"}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -72,7 +83,7 @@ func TestCheckRateLimit_ConvertsQueueActionToProtoQueue(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsTierFromDecision(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "rate_limiter"}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -88,7 +99,7 @@ func TestCheckRateLimit_ReturnsTierFromDecision(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsReject429WithRetryAfter(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 250}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -107,7 +118,7 @@ func TestCheckRateLimit_ReturnsReject429WithRetryAfter(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsReservationsWhenPresent(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Reservations: []limiter.TokenReservation{{Key: "user-1", Token: "tok-abc"}}}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -126,7 +137,7 @@ func TestCheckRateLimit_ReturnsReservationsWhenPresent(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsNoReservationsWhenNonePresent(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -142,7 +153,7 @@ func TestCheckRateLimit_ReturnsNoReservationsWhenNonePresent(t *testing.T) {
 
 func TestCheckRateLimit_PropagatesSkipReservationsToPipeline(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:              "user-1",
@@ -159,7 +170,7 @@ func TestCheckRateLimit_PropagatesSkipReservationsToPipeline(t *testing.T) {
 
 func TestCheckRateLimit_PropagatesCriticalPriorityToPipeline(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:      "user-1",
@@ -176,7 +187,7 @@ func TestCheckRateLimit_PropagatesCriticalPriorityToPipeline(t *testing.T) {
 
 func TestCheckRateLimit_DefaultPriorityMapsToSheddable(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -192,7 +203,7 @@ func TestCheckRateLimit_DefaultPriorityMapsToSheddable(t *testing.T) {
 
 func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
 	fl := &fakeLimiter{err: errors.New("redis: unexpected type *redis.StatusCmd for result")}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{})
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -211,11 +222,12 @@ func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
 
 func TestReleaseConcurrency_CallsDecrConcurrentWithKeyAndToken(t *testing.T) {
 	releaser := &fakeReleaser{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, testSigningKey)
+	token := signTestToken("tok-abc", testSigningKey)
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
 		Key:              "user-1",
-		ConcurrencyToken: "tok-abc",
+		ConcurrencyToken: token,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -223,18 +235,19 @@ func TestReleaseConcurrency_CallsDecrConcurrentWithKeyAndToken(t *testing.T) {
 	if releaser.lastKey != "user-1" {
 		t.Errorf("expected DecrConcurrent called with key=%q, got %q", "user-1", releaser.lastKey)
 	}
-	if releaser.lastToken != "tok-abc" {
-		t.Errorf("expected DecrConcurrent called with token=%q, got %q", "tok-abc", releaser.lastToken)
+	if releaser.lastToken != token {
+		t.Errorf("expected DecrConcurrent called with token=%q, got %q", token, releaser.lastToken)
 	}
 }
 
 func TestReleaseConcurrency_SanitizesStoreErrorButPropagatesFailure(t *testing.T) {
 	releaser := &fakeReleaser{err: errors.New("dial tcp 10.0.0.5:6379: connect: connection refused")}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, testSigningKey)
+	token := signTestToken("tok-abc", testSigningKey)
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
 		Key:              "user-1",
-		ConcurrencyToken: "tok-abc",
+		ConcurrencyToken: token,
 	})
 	if err == nil {
 		t.Fatal("expected error to propagate")
@@ -244,5 +257,84 @@ func TestReleaseConcurrency_SanitizesStoreErrorButPropagatesFailure(t *testing.T
 	}
 	if strings.Contains(err.Error(), "10.0.0.5") || strings.Contains(err.Error(), "connection refused") {
 		t.Errorf("expected sanitized error, but original error text leaked: %v", err)
+	}
+}
+
+func TestReleaseConcurrency_AcceptsValidSignedToken(t *testing.T) {
+	releaser := &fakeReleaser{}
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, testSigningKey)
+	tok := signTestToken("real-uuid", testSigningKey)
+
+	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
+		Key:              "user-1",
+		ConcurrencyToken: tok,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error for a validly signed token: %v", err)
+	}
+	if releaser.lastToken != tok {
+		t.Errorf("expected DecrConcurrent to be called with the validated token %q, got %q", tok, releaser.lastToken)
+	}
+}
+
+func TestReleaseConcurrency_RejectsTamperedToken(t *testing.T) {
+	releaser := &fakeReleaser{}
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, testSigningKey)
+	tok := signTestToken("real-uuid", testSigningKey)
+	tampered := tok[:len(tok)-1] + "0"
+
+	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
+		Key:              "user-1",
+		ConcurrencyToken: tampered,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a tampered token")
+	}
+	if status.Code(err) != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", status.Code(err))
+	}
+	if releaser.lastToken != "" {
+		t.Errorf("expected DecrConcurrent to never be called for a tampered token, but it was called with %q", releaser.lastToken)
+	}
+}
+
+func TestReleaseConcurrency_RejectsMalformedToken(t *testing.T) {
+	releaser := &fakeReleaser{}
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, testSigningKey)
+	malformed := "no-dot-separator-here"
+
+	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
+		Key:              "user-1",
+		ConcurrencyToken: malformed,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a malformed token with no signature separator")
+	}
+	if status.Code(err) != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", status.Code(err))
+	}
+	if releaser.lastToken != "" {
+		t.Errorf("expected DecrConcurrent to never be called for a malformed token, but it was called with %q", releaser.lastToken)
+	}
+}
+
+func TestReleaseConcurrency_RejectsTokenSignedWithDifferentKey(t *testing.T) {
+	releaser := &fakeReleaser{}
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, testSigningKey)
+	otherKeyForTest := []byte("a-completely-different-hmac-key")
+	tok := signTestToken("real-uuid", otherKeyForTest)
+
+	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
+		Key:              "user-1",
+		ConcurrencyToken: tok,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a token signed with a different key")
+	}
+	if status.Code(err) != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", status.Code(err))
+	}
+	if releaser.lastToken != "" {
+		t.Errorf("expected DecrConcurrent to never be called for a token signed with a different key, but it was called with %q", releaser.lastToken)
 	}
 }

@@ -102,7 +102,7 @@ func startTLSTestServer(t *testing.T, ca *testCA, serverCert tls.Certificate) (n
 	}
 	grpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConf)))
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey))
 
 	go func() {
 		_ = grpcServer.Serve(lis)
@@ -169,7 +169,7 @@ func TestMTLS_PlaintextPathUnaffectedWhenTLSNotConfigured(t *testing.T) {
 	lis := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey))
 	go func() { _ = grpcServer.Serve(lis) }()
 	defer grpcServer.Stop()
 
