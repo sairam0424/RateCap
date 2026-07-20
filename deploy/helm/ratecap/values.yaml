@@ -62,6 +62,17 @@ sharedSecret:
   existingSecretName: ""
   existingSecretKey: "shared-secret"
 
+# concurrencySigningKey is BYO-only, same convention as sharedSecret above:
+# the chart never generates or stores a value. Create the Secret out-of-band
+# first, e.g.:
+#   kubectl create secret generic ratecap-concurrency-signing-key \
+#     --from-literal=signing-key=<your-signing-key>
+# then set existingSecretName/existingSecretKey to match. Consumed only by
+# core (signs/verifies Tier 2 concurrency tokens) — sidecar never needs it.
+concurrencySigningKey:
+  existingSecretName: ""
+  existingSecretKey: "signing-key"
+
 # tls is optional and off by default, matching the existing mTLS precedent
 # (RATECAP_TLS_CERT_PATH/KEY_PATH/CA_PATH). Also BYO-only: create the Secret
 # out-of-band first. IMPORTANT: certs' subjectAltName MUST match this
