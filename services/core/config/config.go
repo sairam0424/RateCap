@@ -55,6 +55,12 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.Tiers.RateLimiter.DefaultRate <= 0 {
+		return fmt.Errorf("tiers.rate_limiter.default_rate must be > 0, got %d (is the rate_limiter block missing from your config?)", c.Tiers.RateLimiter.DefaultRate)
+	}
+	if c.Tiers.RateLimiter.DefaultBurst < 0 {
+		return fmt.Errorf("tiers.rate_limiter.default_burst must be >= 0, got %d", c.Tiers.RateLimiter.DefaultBurst)
+	}
 	if c.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent <= 0 {
 		return fmt.Errorf("tiers.concurrency_limiter.default_max_concurrent must be > 0, got %d (is the concurrency_limiter block missing from your config?)", c.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent)
 	}
