@@ -35,7 +35,6 @@ tiers:
     default_max_concurrent: 50
     reserved_critical_pct: 20
     max_request_duration_ms: 30000
-    default_priority: sheddable
     shadow_mode: false
 `)
 

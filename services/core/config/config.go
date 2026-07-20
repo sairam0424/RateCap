@@ -24,11 +24,10 @@ type ConcurrencyLimiterConfig struct {
 }
 
 type FleetShedderConfig struct {
-	DefaultMaxConcurrent int    `yaml:"default_max_concurrent"`
-	ReservedCriticalPct  int    `yaml:"reserved_critical_pct"`
-	MaxRequestDurationMs int64  `yaml:"max_request_duration_ms"`
-	DefaultPriority      string `yaml:"default_priority"`
-	ShadowMode           bool   `yaml:"shadow_mode"`
+	DefaultMaxConcurrent int   `yaml:"default_max_concurrent"`
+	ReservedCriticalPct  int   `yaml:"reserved_critical_pct"`
+	MaxRequestDurationMs int64 `yaml:"max_request_duration_ms"`
+	ShadowMode           bool  `yaml:"shadow_mode"`
 }
 
 type Config struct {

@@ -31,7 +31,6 @@ tiers:
     default_max_concurrent: 100
     reserved_critical_pct: 20
     max_request_duration_ms: 5000
-    default_priority: normal
     shadow_mode: false
 `
 	if err := os.WriteFile(configPath, []byte(validConfig), 0644); err != nil {

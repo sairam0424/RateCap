@@ -55,9 +55,16 @@ func verifyToken(token string, signingKey []byte) bool {
 }
 
 func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLimitRequest) (*ratecapv1.CheckRateLimitResponse, error) {
+	// PRIORITY_UNSPECIFIED (a caller that never set the field) and SHEDDABLE
+	// both map to limiter.Sheddable — the same safe default either way, now
+	// an explicit case rather than an incidental fallthrough of an if-check
+	// that couldn't distinguish "never set" from "set to sheddable".
 	priority := limiter.Sheddable
-	if req.Priority == ratecapv1.Priority_CRITICAL {
+	switch req.Priority {
+	case ratecapv1.Priority_CRITICAL:
 		priority = limiter.Critical
+	case ratecapv1.Priority_SHEDDABLE, ratecapv1.Priority_PRIORITY_UNSPECIFIED:
+		priority = limiter.Sheddable
 	}
 
 	decision, err := s.pipeline.Check(ctx, limiter.Request{
