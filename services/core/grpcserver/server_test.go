@@ -201,6 +201,40 @@ func TestCheckRateLimit_DefaultPriorityMapsToSheddable(t *testing.T) {
 	}
 }
 
+func TestCheckRateLimit_ExplicitSheddablePriorityMapsToSheddable(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
+
+	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:      "user-1",
+		Cost:     1,
+		Priority: ratecapv1.Priority_SHEDDABLE,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fl.lastReq.Priority != limiter.Sheddable {
+		t.Errorf("expected explicit Priority_SHEDDABLE to map to limiter.Sheddable, got %v", fl.lastReq.Priority)
+	}
+}
+
+func TestCheckRateLimit_UnspecifiedPriorityMapsToSheddable(t *testing.T) {
+	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
+
+	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+		Key:      "user-1",
+		Cost:     1,
+		Priority: ratecapv1.Priority_PRIORITY_UNSPECIFIED,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fl.lastReq.Priority != limiter.Sheddable {
+		t.Errorf("expected explicit Priority_PRIORITY_UNSPECIFIED to map to limiter.Sheddable (the same safe default as never setting the field), got %v", fl.lastReq.Priority)
+	}
+}
+
 func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
 	fl := &fakeLimiter{err: errors.New("redis: unexpected type *redis.StatusCmd for result")}
 	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, testSigningKey)
