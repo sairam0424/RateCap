@@ -36,3 +36,38 @@ func TestResolveMaxInflight_NegativeReturnsDefault(t *testing.T) {
 		t.Errorf("expected 500 for a negative value, got %d", got)
 	}
 }
+
+func TestResolveMaxRPS_EmptyStringReturnsDefault(t *testing.T) {
+	got := resolveMaxRPS("", 1000)
+	if got != 1000 {
+		t.Errorf("expected 1000 for empty string, got %v", got)
+	}
+}
+
+func TestResolveMaxRPS_ValidPositiveValueIsUsed(t *testing.T) {
+	got := resolveMaxRPS("50", 1000)
+	if got != 50 {
+		t.Errorf("expected 50, got %v", got)
+	}
+}
+
+func TestResolveMaxRPS_UnparseableStringReturnsDefault(t *testing.T) {
+	got := resolveMaxRPS("not-a-number", 1000)
+	if got != 1000 {
+		t.Errorf("expected 1000 for an unparseable value, got %v", got)
+	}
+}
+
+func TestResolveMaxRPS_ZeroReturnsDefault(t *testing.T) {
+	got := resolveMaxRPS("0", 1000)
+	if got != 1000 {
+		t.Errorf("expected 1000 for a zero value (would reject every request), got %v", got)
+	}
+}
+
+func TestResolveMaxRPS_NegativeReturnsDefault(t *testing.T) {
+	got := resolveMaxRPS("-5", 1000)
+	if got != 1000 {
+		t.Errorf("expected 1000 for a negative value, got %v", got)
+	}
+}

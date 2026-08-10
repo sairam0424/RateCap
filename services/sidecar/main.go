@@ -16,6 +16,7 @@ import (
 	"github.com/ratecap/sidecar/auth"
 	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/proxy"
+	"github.com/ratecap/sidecar/ratelimit"
 	"github.com/ratecap/sidecar/tlsconfig"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -35,6 +36,22 @@ func resolveMaxInflight(envVal string, defaultVal int64) int64 {
 	}
 	if parsed <= 0 {
 		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q must be a positive integer, using default of %d", envVal, defaultVal)
+		return defaultVal
+	}
+	return parsed
+}
+
+func resolveMaxRPS(envVal string, defaultVal float64) float64 {
+	if envVal == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseFloat(envVal, 64)
+	if err != nil {
+		log.Printf("RATECAP_SIDECAR_MAX_RPS=%q is not a valid number, using default of %v: %v", envVal, defaultVal, err)
+		return defaultVal
+	}
+	if parsed <= 0 {
+		log.Printf("RATECAP_SIDECAR_MAX_RPS=%q must be a positive number, using default of %v", envVal, defaultVal)
 		return defaultVal
 	}
 	return parsed
@@ -89,6 +106,10 @@ func main() {
 	mux.Handle("/metrics", metrics.Handler())
 	mux.HandleFunc("/healthz", healthzHandler)
 
+	maxRPS := resolveMaxRPS(os.Getenv("RATECAP_SIDECAR_MAX_RPS"), 1000)
+	limiter := ratelimit.New(maxRPS)
+	handler := ratelimit.Middleware(limiter, mux)
+
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {
 		listenAddr = ":8080"
@@ -96,7 +117,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              listenAddr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
