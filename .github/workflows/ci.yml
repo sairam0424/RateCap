@@ -91,3 +91,83 @@ jobs:
 
       - name: Template
         run: helm template test-release deploy/helm/ratecap --set sharedSecret.existingSecretName=test-secret --set concurrencySigningKey.existingSecretName=test-signing-key --set sampleapp.enabled=true
+
+      - name: Template with mTLS enabled
+        run: helm template test-release deploy/helm/ratecap --set sharedSecret.existingSecretName=test-secret --set concurrencySigningKey.existingSecretName=test-signing-key --set sampleapp.enabled=true --set tls.enabled=true --set tls.core.existingSecretName=test-core-tls --set tls.sidecar.existingSecretName=test-sidecar-tls
+
+  docker-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [core, sidecar, sampleapp]
+        include:
+          - image: core
+            dockerfile: services/core/Dockerfile
+          - image: sidecar
+            dockerfile: services/sidecar/Dockerfile
+          - image: sampleapp
+            dockerfile: deploy/sampleapp/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.image }} image
+        run: docker build -f ${{ matrix.dockerfile }} -t ratecap-${{ matrix.image }}:ci .
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate demo certs
+        run: bash deploy/generate-demo-certs.sh
+
+      - name: Bring up stack
+        run: docker compose -f deploy/docker-compose.yml up --build -d
+
+      - name: Wait for stack readiness
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/healthz || true)
+            if [ "$code" = "200" ]; then
+              echo "stack ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "stack did not become ready in time" >&2
+          docker compose -f deploy/docker-compose.yml logs
+          exit 1
+
+      - name: Exercise demo endpoints
+        run: |
+          check() {
+            local path="$1"
+            shift
+            local allowed=("$@")
+            local code
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3000${path}")
+            for a in "${allowed[@]}"; do
+              if [ "$code" = "$a" ]; then
+                echo "PASS ${path} -> ${code}"
+                return 0
+              fi
+            done
+            echo "FAIL ${path} -> ${code} (expected one of: ${allowed[*]})" >&2
+            return 1
+          }
+
+          # slow-report/fleet-demo/worker-demo exercise tiers 2-4 against the
+          # demo config's deliberately tight limits, so a 429/503 shed is an
+          # expected outcome, not a failure — only checkout (tier 1 only,
+          # rate 2/burst 5) is asserted as a plain 200.
+          check /checkout 200
+          check /slow-report 200 429
+          check /fleet-demo 200 503
+          check /worker-demo 200 503
+
+      - name: Tear down stack
+        if: always()
+        run: |
+          docker compose -f deploy/docker-compose.yml down -v
+          rm -rf deploy/certs
