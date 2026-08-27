@@ -15,11 +15,19 @@ import (
 
 type benchResult struct {
 	TotalRequests int     `json:"total_requests"`
+	Accepted      int     `json:"accepted"`
+	Rejected      int     `json:"rejected"`
+	Errored       int     `json:"errored"`
 	ElapsedMs     int64   `json:"elapsed_ms"`
 	ThroughputRPS float64 `json:"throughput_rps"`
 	P50Ms         float64 `json:"p50_ms"`
 	P99Ms         float64 `json:"p99_ms"`
 	P999Ms        float64 `json:"p999_ms"`
+}
+
+type benchOutcome struct {
+	elapsed time.Duration
+	kind    string // "accepted", "rejected", or "errored"
 }
 
 func newBenchRunCmd() *cobra.Command {
@@ -40,9 +48,10 @@ func newBenchRunCmd() *cobra.Command {
 				return enc.Encode(result)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Total requests: %d\n", result.TotalRequests)
+			fmt.Fprintf(cmd.OutOrStdout(), "Accepted: %d  Rejected: %d  Errored: %d\n", result.Accepted, result.Rejected, result.Errored)
 			fmt.Fprintf(cmd.OutOrStdout(), "Elapsed: %dms\n", result.ElapsedMs)
 			fmt.Fprintf(cmd.OutOrStdout(), "Throughput: %.1f req/s\n", result.ThroughputRPS)
-			fmt.Fprintf(cmd.OutOrStdout(), "P50: %.2fms  P99: %.2fms  P99.9: %.2fms\n", result.P50Ms, result.P99Ms, result.P999Ms)
+			fmt.Fprintf(cmd.OutOrStdout(), "P50: %.2fms  P99: %.2fms  P99.9: %.2fms (accepted requests only)\n", result.P50Ms, result.P99Ms, result.P999Ms)
 			return nil
 		},
 	}
@@ -61,7 +70,7 @@ func runBench(ctx context.Context, sidecarAddr string, concurrency, requests int
 	client := ratecap.NewClient(sidecarAddr)
 
 	var mu sync.Mutex
-	var latencies []time.Duration
+	var outcomes []benchOutcome
 
 	var wg sync.WaitGroup
 	jobs := make(chan int, requests)
@@ -78,17 +87,29 @@ func runBench(ctx context.Context, sidecarAddr string, concurrency, requests int
 			for seq := range jobs {
 				key := fmt.Sprintf("%s-%d-%d", keyPrefix, workerID, seq)
 				reqStart := time.Now()
+				kind := "accepted"
 				if useAcquire {
 					ticket, err := client.Acquire(ctx, key)
-					if err == nil {
+					switch {
+					case err != nil:
+						kind = "errored"
+					case !ticket.Allowed:
+						kind = "rejected"
+					default:
 						ticket.Release(ctx)
 					}
 				} else {
-					client.Allow(ctx, key)
+					allowed, _, err := client.Allow(ctx, key)
+					switch {
+					case err != nil:
+						kind = "errored"
+					case !allowed:
+						kind = "rejected"
+					}
 				}
 				elapsed := time.Since(reqStart)
 				mu.Lock()
-				latencies = append(latencies, elapsed)
+				outcomes = append(outcomes, benchOutcome{elapsed: elapsed, kind: kind})
 				mu.Unlock()
 			}
 		}(w)
@@ -96,15 +117,31 @@ func runBench(ctx context.Context, sidecarAddr string, concurrency, requests int
 	wg.Wait()
 	totalElapsed := time.Since(start)
 
-	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	var accepted, rejected, errored int
+	var acceptedLatencies []time.Duration
+	for _, o := range outcomes {
+		switch o.kind {
+		case "accepted":
+			accepted++
+			acceptedLatencies = append(acceptedLatencies, o.elapsed)
+		case "rejected":
+			rejected++
+		case "errored":
+			errored++
+		}
+	}
+	sort.Slice(acceptedLatencies, func(i, j int) bool { return acceptedLatencies[i] < acceptedLatencies[j] })
 
 	return benchResult{
-		TotalRequests: len(latencies),
+		TotalRequests: len(outcomes),
+		Accepted:      accepted,
+		Rejected:      rejected,
+		Errored:       errored,
 		ElapsedMs:     totalElapsed.Milliseconds(),
-		ThroughputRPS: float64(len(latencies)) / totalElapsed.Seconds(),
-		P50Ms:         percentileMs(latencies, 0.50),
-		P99Ms:         percentileMs(latencies, 0.99),
-		P999Ms:        percentileMs(latencies, 0.999),
+		ThroughputRPS: float64(len(outcomes)) / totalElapsed.Seconds(),
+		P50Ms:         percentileMs(acceptedLatencies, 0.50),
+		P99Ms:         percentileMs(acceptedLatencies, 0.99),
+		P999Ms:        percentileMs(acceptedLatencies, 0.999),
 	}
 }
 

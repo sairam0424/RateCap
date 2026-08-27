@@ -121,3 +121,46 @@ func TestBenchRun_KeyPrefixIsUsedInGeneratedKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestBenchRun_TracksAcceptedRejectedAndErroredSeparately(t *testing.T) {
+	var count int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		switch count % 3 {
+		case 0:
+			w.WriteHeader(http.StatusOK)
+		case 1:
+			w.WriteHeader(http.StatusTooManyRequests)
+		case 2:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{"bench", "run", "--sidecar-addr", server.URL, "--requests", "9", "--concurrency", "1", "--json"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error %v for output %q", err, out.String())
+	}
+
+	accepted, ok := result["accepted"].(float64)
+	if !ok || accepted != 3 {
+		t.Errorf("expected 3 accepted (every 3rd of 9 requests returns 200), got %v (present=%v)", accepted, ok)
+	}
+	rejected, ok := result["rejected"].(float64)
+	if !ok || rejected != 6 {
+		t.Errorf("expected 6 rejected (429+503 responses), got %v (present=%v)", rejected, ok)
+	}
+	errored, ok := result["errored"].(float64)
+	if !ok || errored != 0 {
+		t.Errorf("expected 0 errored (no transport failures in this test), got %v (present=%v)", errored, ok)
+	}
+}
