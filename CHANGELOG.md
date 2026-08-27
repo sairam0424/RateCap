@@ -6,14 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-07-20 — Tier 2 Concurrency-Token Security Hotfix
+
+**Semver note:** this release contains a breaking wire-format change (see below) but was tagged as a patch bump (2.3.1 → 2.3.2), inconsistent with this file's stated intent to follow Semantic Versioning. Documented here as an acknowledged exception rather than corrected retroactively (re-tagging a already-published release would be worse) — going forward, a breaking change gets at minimum a minor bump, called out explicitly in its own CHANGELOG entry, the way this one now is.
+
+Patch release closing issues #12 and #13, both confirmed exploitable via real-world CVE precedent (Portainer CVE-2026-44883, nhost CVE-2026-34969).
+
 ### Security
 
-- Tier 2 concurrency tokens are now HMAC-SHA256-signed (new required `RATECAP_CONCURRENCY_SIGNING_KEY` env var on `ratecap-core`) and `ReleaseConcurrency` verifies a token's signature before releasing a slot, rejecting a forged/tampered token with `codes.PermissionDenied` — closes a forgeable-bearer-token gap with real-world precedent (Portainer CVE-2026-44883, nhost CVE-2026-34969).
-- `/release`'s `key` and `token` now travel as request headers (`X-RateCap-Concurrency-Key`, `X-RateCap-Concurrency-Token`) instead of URL query parameters, which were at risk of leaking into access logs, proxy logs, and `Referer` headers. **Breaking change**: any direct HTTP caller of `/release` bypassing the Go or Python SDK must migrate to the new headers; both SDKs are updated in this release and require no caller-visible changes beyond upgrading.
+- `ReleaseConcurrency` now verifies an HMAC-SHA256 signature over the concurrency token before releasing a slot, rejecting a forged/tampered/wrong-key token with `codes.PermissionDenied` (#12).
+- **Breaking change:** `/release`'s `key` and `token` now travel as request headers (`X-RateCap-Concurrency-Key`/`X-RateCap-Concurrency-Token`) instead of URL query parameters, closing a real leakage vector via proxy/access logs and `Referer` headers (#13). Any direct HTTP caller of `/release` bypassing the Go/Python SDKs must migrate to the new headers.
+- New required env var `RATECAP_CONCURRENCY_SIGNING_KEY` on `ratecap-core` (fail-closed at startup).
+
+## [2.3.1] — 2026-07-20 — Tier 2/3/4 Hardening Batch
+
+Patch release: 5 merged PRs (#42-#46) closing 14 tracked issues.
 
 ### Added
 
-- `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
+- Tier 2 hardening: `RetryAfterMs` on rejection, `DecrConcurrent` regression tests, shadow-mode docs (#8, #9, #11).
+- Tier 3 hardening: sheddable-cap rounding tests, shadow-mode reservation test, mixed-priority atomicity test, blast-radius docs (#14, #17, #18, #19).
+- Tier 4 hardening: `X-RateCap-Shed-Tier` header, in-flight metrics gauge, HTTP server timeouts, `/worker-demo` docs (#20, #22, #24, #25).
+- Sidecar error logging: real upstream errors now logged server-side on `/check` and `/release` failures (#41).
+
+### Fixed
+
+- Config watcher debounce: fixes a flaky fsnotify-related test via event coalescing (#37).
+
+## [2.3.0] — 2026-07-19 — Phase 4 Production-Readiness & Adoption
+
+### Added
+
+- Production-readiness and adoption work per Phase 4 of the v2 roadmap (PR #40) — see `docs/superpowers/specs/2026-07-18-v2-phase-4a-comparison-table-design.md`, `2026-07-18-v2-phase-4b-benchmarks-design.md`, and `2026-07-19-v2-phase-4c-helm-chart-design.md` for the full design rationale behind this release's comparison table, benchmarks, and Helm chart.
+
+## [2.2.0] — 2026-07-17 — Phase 3 Bounded Queueing (ConcurrencyLimiter)
+
+### Added
+
+- Bounded queueing for Tier 2's `ConcurrencyLimiter` (PR #34) — see `docs/superpowers/specs/2026-07-17-v2-phase-3-queueing-design.md`.
+
+## [2.1.0] — 2026-07-17 — Phase 2 Developer Tooling
+
+### Added
+
+- `ratecapctl` CLI and the Python SDK (PR #33) — see `docs/superpowers/specs/2026-07-17-v2-phase-2-tooling-design.md`.
+
+## [2.0.0] — 2026-07-16 — Phase 1 Foundations
+
+### Added
+
+- Observability, structured logging, and optional mTLS (PR #31) — see `docs/superpowers/specs/2026-07-17-v2-phase-1-foundations-design.md`.
+
+## [1.0.1] — 2026-07-16 — Config Validation Gaps
+
+### Fixed
+
+- Config validation gaps found in a post-v1.0.0 audit (PR #29) — see `docs/superpowers/specs/2026-07-16-v1.0.1-config-validation-gaps.md`.
 
 ## [1.0.0] — All Four Tiers — 2026-07-16
 
