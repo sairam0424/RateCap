@@ -8,9 +8,9 @@ RateCap follows semantic versioning. The latest tagged release and the `main` br
 
 | Version | Supported |
 | ------- | --------- |
-| v1.0.x  | ✅ |
-| main    | ✅ |
-| < v1.0.0 | ❌ |
+| Latest tagged release (see [`VERSION`](VERSION)) | ✅ |
+| `main` | ✅ |
+| All earlier tagged releases | ❌ |
 
 ## Reporting a Vulnerability
 
