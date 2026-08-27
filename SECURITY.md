@@ -72,7 +72,7 @@ v2.3.2 fixes both halves:
 - The `deploy/sampleapp` demo's `/worker-demo` endpoint exercises Tier 4 (the Worker Utilization Load Shedder) with the same lack of authentication. Its blast radius is smaller than `/fleet-demo`'s, though: `Shedder` (`services/sidecar/worker/shedder.go`) tracks in-flight requests per-sidecar-instance-locally, not fleet-globally like `FleetShedder`, so an unauthenticated caller hitting `/worker-demo` can only exhaust the local sidecar instance's own in-flight capacity — it cannot consume shared, fleet-wide state the way `/fleet-demo` can.
 - A stronger priority-claim authorization mechanism — for example, binding a claim to the existing shared-secret scheme, or a future per-caller identity system — is deferred to v2.
 
-If your deployment cannot guarantee that only trusted callers can reach `ratecap-sidecar`, treat every request as `sheddable` by setting `default_priority: sheddable` and do not rely on the `x-ratecap-priority` header for enforcement until v2.
+If your deployment cannot guarantee that only trusted callers can reach `ratecap-sidecar`, do not rely on the `x-ratecap-priority` header for enforcement until v2. There is currently no operator-configurable default: `ratecap-sidecar` always falls back to `sheddable` (`proxy.Sheddable`, hardcoded in `services/sidecar/main.go`) for any request that omits the header — the safe choice, since an unset/misconfigured caller cannot accidentally mark everything critical and defeat the shedder.
 
 ## Scope
 

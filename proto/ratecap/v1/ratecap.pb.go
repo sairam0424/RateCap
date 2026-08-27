@@ -79,19 +79,22 @@ func (Action) EnumDescriptor() ([]byte, []int) {
 type Priority int32
 
 const (
-	Priority_SHEDDABLE Priority = 0
-	Priority_CRITICAL  Priority = 1
+	Priority_PRIORITY_UNSPECIFIED Priority = 0
+	Priority_SHEDDABLE            Priority = 1
+	Priority_CRITICAL             Priority = 2
 )
 
 // Enum value maps for Priority.
 var (
 	Priority_name = map[int32]string{
-		0: "SHEDDABLE",
-		1: "CRITICAL",
+		0: "PRIORITY_UNSPECIFIED",
+		1: "SHEDDABLE",
+		2: "CRITICAL",
 	}
 	Priority_value = map[string]int32{
-		"SHEDDABLE": 0,
-		"CRITICAL":  1,
+		"PRIORITY_UNSPECIFIED": 0,
+		"SHEDDABLE":            1,
+		"CRITICAL":             2,
 	}
 )
 
@@ -239,7 +242,7 @@ func (x *CheckRateLimitRequest) GetPriority() Priority {
 	if x != nil {
 		return x.Priority
 	}
-	return Priority_SHEDDABLE
+	return Priority_PRIORITY_UNSPECIFIED
 }
 
 type CheckRateLimitResponse struct {
@@ -429,10 +432,11 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"REJECT_503\x10\x02\x12\x0e\n" +
 	"\n" +
 	"SHADOW_LOG\x10\x03\x12\t\n" +
-	"\x05QUEUE\x10\x04*'\n" +
-	"\bPriority\x12\r\n" +
-	"\tSHEDDABLE\x10\x00\x12\f\n" +
-	"\bCRITICAL\x10\x012\xce\x01\n" +
+	"\x05QUEUE\x10\x04*A\n" +
+	"\bPriority\x12\x18\n" +
+	"\x14PRIORITY_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tSHEDDABLE\x10\x01\x12\f\n" +
+	"\bCRITICAL\x10\x022\xce\x01\n" +
 	"\x0eRatecapService\x12W\n" +
 	"\x0eCheckRateLimit\x12!.ratecap.v1.CheckRateLimitRequest\x1a\".ratecap.v1.CheckRateLimitResponse\x12c\n" +
 	"\x12ReleaseConcurrency\x12%.ratecap.v1.ReleaseConcurrencyRequest\x1a&.ratecap.v1.ReleaseConcurrencyResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"

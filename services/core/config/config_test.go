@@ -156,7 +156,6 @@ tiers:
     default_max_concurrent: 100
     reserved_critical_pct: 20
     max_request_duration_ms: 30000
-    default_priority: sheddable
     shadow_mode: false
 `)
 
@@ -173,9 +172,6 @@ tiers:
 	}
 	if cfg.Tiers.FleetShedder.MaxRequestDurationMs != 30000 {
 		t.Errorf("expected MaxRequestDurationMs=30000, got %d", cfg.Tiers.FleetShedder.MaxRequestDurationMs)
-	}
-	if cfg.Tiers.FleetShedder.DefaultPriority != "sheddable" {
-		t.Errorf("expected DefaultPriority=%q, got %q", "sheddable", cfg.Tiers.FleetShedder.DefaultPriority)
 	}
 	if cfg.Tiers.FleetShedder.ShadowMode != false {
 		t.Errorf("expected ShadowMode=false, got %v", cfg.Tiers.FleetShedder.ShadowMode)
