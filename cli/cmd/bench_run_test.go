@@ -164,3 +164,36 @@ func TestBenchRun_TracksAcceptedRejectedAndErroredSeparately(t *testing.T) {
 		t.Errorf("expected 0 errored (no transport failures in this test), got %v (present=%v)", errored, ok)
 	}
 }
+
+func TestBenchRun_AcquireReleaseIsCalledEvenForRejectedTickets(t *testing.T) {
+	var checkCount, releaseCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/check":
+			checkCount++
+			w.Header().Set("Concurrency-Token-0", "tok-tier2")
+			w.Header().Set("Concurrency-Key-0", "k-tier2")
+			w.WriteHeader(http.StatusTooManyRequests)
+		case "/release":
+			releaseCount++
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{"bench", "run", "--sidecar-addr", server.URL, "--requests", "4", "--concurrency", "1", "--acquire"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if checkCount != 4 {
+		t.Errorf("expected 4 /check calls, got %d", checkCount)
+	}
+	if releaseCount != 4 {
+		t.Errorf("expected 4 /release calls even though /check returned 429, got %d", releaseCount)
+	}
+}

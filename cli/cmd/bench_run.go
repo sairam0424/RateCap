@@ -95,7 +95,8 @@ func runBench(ctx context.Context, sidecarAddr string, concurrency, requests int
 						kind = "errored"
 					case !ticket.Allowed:
 						kind = "rejected"
-					default:
+					}
+					if err == nil {
 						ticket.Release(ctx)
 					}
 				} else {
