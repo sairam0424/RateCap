@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -16,6 +15,13 @@ import (
 // chosen to be far larger than any real concurrency count while staying
 // well under Lua 5.1's 2^53 integer-precision limit for tonumber().
 const unboundedCap = math.MaxInt32
+
+// backlogKeyPrefix namespaces Tier 2's bounded-queueing backlog counter in
+// the shared store, distinct from the real per-key concurrency-slot key
+// (bare req.Key), so the two counters never collide on the same key and so
+// the backlog ceiling is enforced fleet-wide across every
+// ConcurrencyLimiter instance sharing this store — not per-instance.
+const backlogKeyPrefix = "backlog:"
 
 type concurrencyChecker interface {
 	IncrConcurrent(ctx context.Context, key string, cap int, maxDurationMs int64) (bool, string, error)
@@ -33,8 +39,6 @@ type ConcurrencyLimiter struct {
 	maxBacklog      int
 	maxQueueWaitMs  int64
 	pollIntervalMs  int64
-
-	backlog atomic.Int64
 }
 
 func NewConcurrencyLimiter(s concurrencyChecker, cap int, maxDurationMs int64, shadowMode bool, queueingEnabled bool, maxBacklog int, maxQueueWaitMs, pollIntervalMs int64) *ConcurrencyLimiter {
@@ -65,13 +69,6 @@ func (l *ConcurrencyLimiter) Reconfigure(cap int, maxDurationMs int64, shadowMod
 	l.maxBacklog = maxBacklog
 	l.maxQueueWaitMs = maxQueueWaitMs
 	l.pollIntervalMs = pollIntervalMs
-}
-
-// BacklogDepth reports the current number of goroutines occupying a backlog
-// slot. It exists for tests that need to observe live queue depth under
-// concurrent load; production code never calls it.
-func (l *ConcurrencyLimiter) BacklogDepth() int64 {
-	return l.backlog.Load()
 }
 
 func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, error) {
@@ -107,28 +104,31 @@ func (l *ConcurrencyLimiter) Check(ctx context.Context, req Request) (Decision, 
 		return Decision{Action: REJECT_429, RetryAfterMs: maxDurationMs, Tier: "concurrency_limiter"}, nil
 	}
 
-	if !l.acquireBacklogSlot(maxBacklog) {
+	backlogAllowed, backlogToken, err := l.acquireBacklogSlot(ctx, req.Key, maxBacklog, maxQueueWaitMs)
+	if err != nil {
+		return Decision{}, err
+	}
+	if !backlogAllowed {
 		return Decision{Action: REJECT_429, RetryAfterMs: maxDurationMs, Tier: "concurrency_limiter"}, nil
 	}
-	defer l.backlog.Add(-1)
+	defer func() {
+		// Best-effort release: a lost DecrConcurrent (e.g. context canceled
+		// concurrently with this defer) self-heals via the backlog key's own
+		// reap deadline (maxQueueWaitMs, passed as IncrConcurrent's
+		// maxDurationMs above) — the same safety net the real concurrency
+		// slot already relies on, so the error is deliberately not retried.
+		_ = l.store.DecrConcurrent(ctx, backlogKeyPrefix+req.Key, backlogToken)
+	}()
 
 	return l.pollUntilAllowedOrDeadline(ctx, req, cap, maxDurationMs, maxQueueWaitMs, pollIntervalMs)
 }
 
-// acquireBacklogSlot is a counting semaphore via CAS loop, mirroring
-// worker.Shedder's exact pattern (services/sidecar/worker/shedder.go),
-// rather than a buffered channel — maxBacklog is hot-reloadable via
-// Reconfigure, and a channel's capacity cannot be resized after creation.
-func (l *ConcurrencyLimiter) acquireBacklogSlot(maxBacklog int) bool {
-	for {
-		current := l.backlog.Load()
-		if current >= int64(maxBacklog) {
-			return false
-		}
-		if l.backlog.CompareAndSwap(current, current+1) {
-			return true
-		}
-	}
+// acquireBacklogSlot reserves a backlog slot in the shared store under a
+// namespaced key, so the backlog ceiling is fleet-wide across every
+// ConcurrencyLimiter instance sharing this store (e.g. every ratecap-core
+// replica) — not per-instance, which was the bug this replaces.
+func (l *ConcurrencyLimiter) acquireBacklogSlot(ctx context.Context, key string, maxBacklog int, maxQueueWaitMs int64) (bool, string, error) {
+	return l.store.IncrConcurrent(ctx, backlogKeyPrefix+key, maxBacklog, maxQueueWaitMs)
 }
 
 func (l *ConcurrencyLimiter) pollUntilAllowedOrDeadline(ctx context.Context, req Request, cap int, maxDurationMs, maxQueueWaitMs, pollIntervalMs int64) (Decision, error) {
