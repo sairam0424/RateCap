@@ -73,15 +73,15 @@ No ordering (LIFO/FIFO) is imposed on waiters — with independent polling gorou
 
 Every tier supports `shadow_mode`: the limiter runs its full decision logic (real cache lookups, real stats) but the result is always coerced to `ALLOW` rather than actually rejecting the request, with the would-have-rejected outcome logged. This lets an operator turn RateCap on in production and observe what it *would* do before it enforces anything — matching Envoy's confirmed production pattern for the same problem. Shadow mode is controlled per-tier via config and globally via the `RATECAP_SHADOW_MODE` environment variable, resolved in `services/sidecar/shadow/shadow.go`.
 
-## Priority resolution (scaffolded ahead of Tier 3)
+## Priority resolution
 
-Tier 1 does not use request priority — only Tier 3 (the fleet-usage shedder) does. The resolution mechanism lives in `services/sidecar/proxy/priority.go`, in this fallback order:
+Tier 1 does not use request priority — only Tier 3 (the fleet-usage shedder) does, splitting its effective cap between `critical` and `sheddable` traffic (`services/core/limiter/fleetshedder.go`). The resolution mechanism lives in `services/sidecar/proxy/priority.go`, in this fallback order:
 
 1. Per-request `x-ratecap-priority` header (`critical` or `sheddable`)
-2. Static route-config match (not yet wired into config — the header path is scaffolded)
-3. A safe global default (`sheddable`) — an unset or misconfigured caller cannot accidentally mark every request critical and defeat the shedder
+2. Static route-config match — not implemented; deferred as a fast-follow (see the Tier 3 design spec)
+3. A safe global default (`sheddable`), currently hardcoded to `proxy.Sheddable` in `services/sidecar/main.go` with no operator-configurable override — an unset or misconfigured caller cannot accidentally mark every request critical and defeat the shedder
 
-A characterization test (`TestServeHTTP_ParsesPriorityHeaderWithoutError`) pins today's "parsed but discarded" behavior, so a future change to make priority load-bearing can't land without deliberately updating that test.
+On the wire, `Priority`'s proto zero-value is `PRIORITY_UNSPECIFIED` (0), distinct from `SHEDDABLE` (1) — a caller that never sets the field is now distinguishable, at the wire level, from one that explicitly requests `sheddable`. Both map to the same safe `limiter.Sheddable` default server-side (`services/core/grpcserver/server.go`'s priority-conversion switch), so this is purely a correctness/observability improvement, not a behavior change: a caller-side bug (forgetting to set priority) no longer looks byte-for-byte identical to intentional sheddable traffic.
 
 ## Testing strategy
 

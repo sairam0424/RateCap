@@ -156,7 +156,6 @@ tiers:
     default_max_concurrent: 100
     reserved_critical_pct: 20
     max_request_duration_ms: 30000
-    default_priority: sheddable
     shadow_mode: false
 `)
 
@@ -174,9 +173,6 @@ tiers:
 	if cfg.Tiers.FleetShedder.MaxRequestDurationMs != 30000 {
 		t.Errorf("expected MaxRequestDurationMs=30000, got %d", cfg.Tiers.FleetShedder.MaxRequestDurationMs)
 	}
-	if cfg.Tiers.FleetShedder.DefaultPriority != "sheddable" {
-		t.Errorf("expected DefaultPriority=%q, got %q", "sheddable", cfg.Tiers.FleetShedder.DefaultPriority)
-	}
 	if cfg.Tiers.FleetShedder.ShadowMode != false {
 		t.Errorf("expected ShadowMode=false, got %v", cfg.Tiers.FleetShedder.ShadowMode)
 	}
@@ -184,6 +180,7 @@ tiers:
 
 func TestValidate_AcceptsValidFleetShedderConfig(t *testing.T) {
 	cfg := &config.Config{}
+	cfg.Tiers.RateLimiter.DefaultRate = 100
 	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
 	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
 	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
@@ -236,6 +233,7 @@ func TestValidate_RejectsNegativeReservedCriticalPct(t *testing.T) {
 func TestValidate_AcceptsReservedCriticalPctBoundaries(t *testing.T) {
 	for _, pct := range []int{0, 100} {
 		cfg := &config.Config{}
+		cfg.Tiers.RateLimiter.DefaultRate = 100
 		cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
 		cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
 		cfg.Tiers.FleetShedder.ReservedCriticalPct = pct
@@ -268,6 +266,7 @@ tiers:
 
 func TestValidate_AcceptsValidConcurrencyLimiterConfig(t *testing.T) {
 	cfg := &config.Config{}
+	cfg.Tiers.RateLimiter.DefaultRate = 100
 	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
 	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
 	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
@@ -395,6 +394,7 @@ func TestValidate_RejectsPollIntervalMsGreaterThanMaxQueueWaitMs(t *testing.T) {
 
 func TestValidate_IgnoresQueueingFieldsWhenQueueingDisabled(t *testing.T) {
 	cfg := &config.Config{}
+	cfg.Tiers.RateLimiter.DefaultRate = 100
 	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
 	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
 	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
@@ -405,5 +405,55 @@ func TestValidate_IgnoresQueueingFieldsWhenQueueingDisabled(t *testing.T) {
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected zero-valued queueing fields to be valid when queueing_enabled=false (matches every existing config with no queueing block), got error: %v", err)
+	}
+}
+
+func TestValidate_RejectsZeroDefaultRate(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.RateLimiter.DefaultRate = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for rate_limiter.default_rate=0, got nil")
+	}
+}
+
+func TestValidate_RejectsNegativeDefaultRate(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.RateLimiter.DefaultRate = -5
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for negative rate_limiter.default_rate, got nil")
+	}
+}
+
+func TestValidate_RejectsNegativeDefaultBurst(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.RateLimiter.DefaultRate = 100
+	cfg.Tiers.RateLimiter.DefaultBurst = -1
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for negative rate_limiter.default_burst, got nil")
+	}
+}
+
+func TestValidate_AcceptsZeroDefaultBurst(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Tiers.FleetShedder.DefaultMaxConcurrent = 100
+	cfg.Tiers.FleetShedder.ReservedCriticalPct = 20
+	cfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent = 50
+	cfg.Tiers.RateLimiter.DefaultRate = 100
+	cfg.Tiers.RateLimiter.DefaultBurst = 0
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected rate_limiter.default_burst=0 to be valid (no burst allowance beyond the steady rate), got error: %v", err)
 	}
 }
