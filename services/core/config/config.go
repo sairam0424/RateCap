@@ -24,11 +24,10 @@ type ConcurrencyLimiterConfig struct {
 }
 
 type FleetShedderConfig struct {
-	DefaultMaxConcurrent int    `yaml:"default_max_concurrent"`
-	ReservedCriticalPct  int    `yaml:"reserved_critical_pct"`
-	MaxRequestDurationMs int64  `yaml:"max_request_duration_ms"`
-	DefaultPriority      string `yaml:"default_priority"`
-	ShadowMode           bool   `yaml:"shadow_mode"`
+	DefaultMaxConcurrent int   `yaml:"default_max_concurrent"`
+	ReservedCriticalPct  int   `yaml:"reserved_critical_pct"`
+	MaxRequestDurationMs int64 `yaml:"max_request_duration_ms"`
+	ShadowMode           bool  `yaml:"shadow_mode"`
 }
 
 type Config struct {
@@ -55,6 +54,12 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.Tiers.RateLimiter.DefaultRate <= 0 {
+		return fmt.Errorf("tiers.rate_limiter.default_rate must be > 0, got %d (is the rate_limiter block missing from your config?)", c.Tiers.RateLimiter.DefaultRate)
+	}
+	if c.Tiers.RateLimiter.DefaultBurst < 0 {
+		return fmt.Errorf("tiers.rate_limiter.default_burst must be >= 0, got %d", c.Tiers.RateLimiter.DefaultBurst)
+	}
 	if c.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent <= 0 {
 		return fmt.Errorf("tiers.concurrency_limiter.default_max_concurrent must be > 0, got %d (is the concurrency_limiter block missing from your config?)", c.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent)
 	}

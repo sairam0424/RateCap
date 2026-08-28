@@ -6,7 +6,7 @@ A faithful, open-source recreation of [Stripe's four-tier rate-limiter and load-
 
 ## Status
 
-**v1.0.0 — complete.** All four of Stripe's tiers are implemented, live-e2e-verified, and audited end-to-end: Tier 1 (Request Rate Limiter), Tier 2 (Concurrent Requests Limiter), Tier 3 (Fleet Usage Load Shedder), Tier 4 (Worker Utilization Load Shedder). See `docs/superpowers/specs/2026-07-13-ratecap-v1-design.md` for the full design and `CHANGELOG.md` for what shipped in each tier.
+**All four of Stripe's tiers are implemented, live-e2e-verified, and audited end-to-end**: Tier 1 (Request Rate Limiter), Tier 2 (Concurrent Requests Limiter), Tier 3 (Fleet Usage Load Shedder), Tier 4 (Worker Utilization Load Shedder), plus v2 additions (bounded queueing, structured observability, optional mTLS — see the Comparison table below and `CHANGELOG.md`). Current version: see [`VERSION`](VERSION) or `CHANGELOG.md`'s latest entry — this line intentionally doesn't hardcode a version number, since that number changes far more often than this file is reviewed. See `docs/superpowers/specs/2026-07-13-ratecap-v1-design.md` for the original v1 design.
 
 ## Architecture
 

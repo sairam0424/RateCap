@@ -18,8 +18,9 @@ enum Action {
 }
 
 enum Priority {
-  SHEDDABLE = 0;
-  CRITICAL = 1;
+  PRIORITY_UNSPECIFIED = 0;
+  SHEDDABLE = 1;
+  CRITICAL = 2;
 }
 
 message TokenReservation {

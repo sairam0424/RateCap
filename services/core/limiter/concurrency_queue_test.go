@@ -10,6 +10,60 @@ import (
 	"github.com/ratecap/core/limiter"
 )
 
+// TestConcurrencyLimiter_BacklogSharedAcrossInstances proves the backlog
+// ceiling is enforced fleet-wide (shared across every ConcurrencyLimiter
+// instance backed by the same store — e.g. every ratecap-core replica),
+// not per-instance. Before the fix, each instance tracked its own local
+// atomic.Int64 counter, so a second instance had no visibility into the
+// first instance's admissions and would wrongly believe it had room.
+func TestConcurrencyLimiter_BacklogSharedAcrossInstances(t *testing.T) {
+	const maxBacklog = 3
+	const maxQueueWaitMs = 2000
+	fs := newFakeConcurrencyStore()
+	l1 := limiter.NewConcurrencyLimiter(fs, 1, 30000, false, true, maxBacklog, maxQueueWaitMs, 10)
+	l2 := limiter.NewConcurrencyLimiter(fs, 1, 30000, false, true, maxBacklog, maxQueueWaitMs, 10)
+	ctx := context.Background()
+
+	// Fill the real concurrency slot so every Check() call falls through to
+	// backlog admission instead of an immediate ALLOW, and nothing ever
+	// frees it (so a backlog-admitted request just waits until timeout).
+	if _, _, err := fs.IncrConcurrent(ctx, "k", 1, 30000); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fill l1's backlog to maxBacklog. Give the goroutines time to acquire
+	// their slots before l2 tries — this ordering is what makes the
+	// assertion below deterministic.
+	var wg sync.WaitGroup
+	for i := 0; i < maxBacklog; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			l1.Check(ctx, limiter.Request{Key: "k"})
+		}()
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	start := time.Now()
+	d, err := l2.Check(ctx, limiter.Request{Key: "k"})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.REJECT_429 {
+		t.Fatalf("expected l2 to be rejected once l1 filled the shared backlog, got %v", d.Action)
+	}
+	// If backlog accounting is per-instance (the bug), l2 wrongly believes
+	// it has room and polls for the full maxQueueWaitMs before timing out.
+	// If it's shared (the fix), l2's own admission attempt fails
+	// immediately against the already-full shared counter.
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("expected l2 to reject immediately (shared backlog full) rather than poll for maxQueueWaitMs (%dms); took %v — backlog accounting is not fleet-wide", maxQueueWaitMs, elapsed)
+	}
+
+	wg.Wait()
+}
+
 func TestConcurrencyLimiter_BacklogFullReturnsImmediate429(t *testing.T) {
 	fs := newFakeConcurrencyStore()
 	l := limiter.NewConcurrencyLimiter(fs, 1, 30000, false, true, 1, 300, 10)
@@ -162,10 +216,8 @@ func TestConcurrencyLimiter_QueueingDisabledStillReturnsImmediate429(t *testing.
 
 // TestConcurrencyLimiter_StressBacklogNeverExceedsMaxBacklog hammers a small
 // MaxBacklog (3) with 50 concurrent waiters against a permanently-full cap,
-// sampling the internal backlog counter while they race to acquire slots.
-// This mirrors worker.Shedder's own stress-test style
-// (services/sidecar/worker/shedder_test.go): real goroutines, no simulation
-// framework, a live peak tracker rather than only a final tally.
+// sampling the shared store's backlog key directly (BacklogDepth() was
+// removed along with the per-instance local counter it reported on).
 func TestConcurrencyLimiter_StressBacklogNeverExceedsMaxBacklog(t *testing.T) {
 	const maxBacklog = 3
 	const goroutines = 50
@@ -191,8 +243,11 @@ func TestConcurrencyLimiter_StressBacklogNeverExceedsMaxBacklog(t *testing.T) {
 	go func() {
 		defer close(sampleDone)
 		for i := 0; i < 100; i++ {
-			if v := l.BacklogDepth(); v > peak.Load() {
-				peak.Store(v)
+			fs.mu.Lock()
+			depth := int64(fs.tokens["backlog:k"])
+			fs.mu.Unlock()
+			if depth > peak.Load() {
+				peak.Store(depth)
 			}
 			time.Sleep(2 * time.Millisecond)
 		}
@@ -203,8 +258,12 @@ func TestConcurrencyLimiter_StressBacklogNeverExceedsMaxBacklog(t *testing.T) {
 	if peak.Load() > maxBacklog {
 		t.Fatalf("backlog peaked at %d, exceeding maxBacklog %d — overshoot", peak.Load(), maxBacklog)
 	}
-	if l.BacklogDepth() != 0 {
-		t.Fatalf("expected backlog to return to 0 after all goroutines finished, got %d", l.BacklogDepth())
+
+	fs.mu.Lock()
+	finalDepth := fs.tokens["backlog:k"]
+	fs.mu.Unlock()
+	if finalDepth != 0 {
+		t.Fatalf("expected backlog to return to 0 after all goroutines finished, got %d", finalDepth)
 	}
 }
 

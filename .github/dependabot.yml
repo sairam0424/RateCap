@@ -1,41 +1,80 @@
 version: 2
 updates:
   - package-ecosystem: "gomod"
-    directory: "/cli"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "gomod"
     directory: "/proto"
     schedule:
       interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: "gomod"
     directory: "/services/core"
     schedule:
       interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: "gomod"
     directory: "/services/sidecar"
     schedule:
       interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: "gomod"
+    directory: "/cli"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: "gomod"
     directory: "/deploy/sampleapp"
     schedule:
       interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: "gomod"
     directory: "/packages/sdks/go"
     schedule:
       interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: "pip"
     directory: "/packages/sdks/python"
     schedule:
       interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directory: "/services/core"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/services/sidecar"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/sampleapp"
     schedule:
       interval: "weekly"
