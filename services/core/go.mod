@@ -14,6 +14,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/toxiproxy v0.44.0
 	google.golang.org/grpc v1.83.1
 	gopkg.in/yaml.v3 v3.0.1
+	pgregory.net/rapid v1.3.0
 )
 
 require (
