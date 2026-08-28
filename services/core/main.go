@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
@@ -17,6 +20,7 @@ import (
 	"github.com/ratecap/core/config"
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
+	coremetrics "github.com/ratecap/core/metrics"
 	"github.com/ratecap/core/store"
 	"github.com/ratecap/core/tlsconfig"
 )
@@ -112,7 +116,9 @@ func main() {
 		log.Fatalf("failed to listen on %s: %v", listenAddr, err)
 	}
 
-	serverOpts := []grpc.ServerOption{grpc.UnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret))}
+	serverOpts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
+	}
 	if tlsCertPath != "" {
 		tlsConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
 		if err != nil {
@@ -144,6 +150,20 @@ func main() {
 		log.Printf("ratecap-core health server listening on %s", healthAddr)
 		if err := healthGRPCServer.Serve(healthLis); err != nil {
 			log.Fatalf("health grpc server failed: %v", err)
+		}
+	}()
+
+	metricsAddr := os.Getenv("RATECAP_METRICS_ADDR")
+	if metricsAddr == "" {
+		metricsAddr = ":9092"
+	}
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", coremetrics.Handler())
+	metricsServer := &http.Server{Addr: metricsAddr, Handler: metricsMux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		log.Printf("ratecap-core metrics server listening on %s", metricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("metrics http server failed: %v", err)
 		}
 	}()
 
