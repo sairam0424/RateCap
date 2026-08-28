@@ -1,0 +1,67 @@
+package metrics
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var GRPCRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_core_grpc_requests_total",
+	Help: "Total number of gRPC requests handled by ratecap-core, labeled by method and resulting status code.",
+}, []string{"method", "code"})
+
+var GRPCRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name: "ratecap_core_grpc_request_duration_seconds",
+	Help: "Latency of gRPC requests handled by ratecap-core, labeled by method.",
+}, []string{"method"})
+
+var RedisCallDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name: "ratecap_core_redis_call_duration_seconds",
+	Help: "Latency of Redis calls made by ratecap-core, labeled by operation.",
+}, []string{"operation"})
+
+var RedisErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_core_redis_errors_total",
+	Help: "Total number of failed Redis calls made by ratecap-core, labeled by operation.",
+}, []string{"operation"})
+
+var ConfigReloadTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_core_config_reload_total",
+	Help: "Total number of config hot-reload attempts, labeled by result (success or failure).",
+}, []string{"result"})
+
+// FailOpenTotal has no ratecap_core_ prefix: fail-open is a fleet-wide safety
+// signal meaningful regardless of which binary emits it, and the spec names
+// it ratecap_fail_open_total verbatim.
+var FailOpenTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_fail_open_total",
+	Help: "Total number of requests allowed through via fail-open behavior after a tier's backing store call errored.",
+}, []string{"tier", "reason"})
+
+func RecordGRPCRequest(method, code string, duration time.Duration) {
+	GRPCRequestsTotal.WithLabelValues(method, code).Inc()
+	GRPCRequestDuration.WithLabelValues(method).Observe(duration.Seconds())
+}
+
+func RecordRedisCall(operation string, duration time.Duration, err error) {
+	RedisCallDuration.WithLabelValues(operation).Observe(duration.Seconds())
+	if err != nil {
+		RedisErrorsTotal.WithLabelValues(operation).Inc()
+	}
+}
+
+func RecordConfigReload(result string) {
+	ConfigReloadTotal.WithLabelValues(result).Inc()
+}
+
+func RecordFailOpen(tier, reason string) {
+	FailOpenTotal.WithLabelValues(tier, reason).Inc()
+}
+
+func Handler() http.Handler {
+	return promhttp.Handler()
+}

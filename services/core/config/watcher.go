@@ -13,7 +13,7 @@ import (
 // on Linux inotify) into one reload of the final on-disk content.
 const debounceWindow = 50 * time.Millisecond
 
-func Watch(path string, onChange func(*Config)) (stop func(), err error) {
+func Watch(path string, onChange func(*Config, error)) (stop func(), err error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -52,12 +52,13 @@ func Watch(path string, onChange func(*Config)) (stop func(), err error) {
 					timer.Reset(debounceWindow)
 				}
 			case <-timer.C:
-				cfg, err := Load(path)
-				if err != nil {
-					log.Printf("error reloading config %s: %v", path, err)
+				cfg, loadErr := Load(path)
+				if loadErr != nil {
+					log.Printf("error reloading config %s: %v", path, loadErr)
+					onChange(nil, loadErr)
 					continue
 				}
-				onChange(cfg)
+				onChange(cfg, nil)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return

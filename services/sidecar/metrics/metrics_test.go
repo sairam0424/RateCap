@@ -3,6 +3,7 @@ package metrics_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -40,6 +41,36 @@ func TestSetWorkerInFlight_SetsGaugeToGivenValue(t *testing.T) {
 	got = testutil.ToFloat64(metrics.WorkerInFlightRequests)
 	if got != 2 {
 		t.Errorf("expected ratecap_worker_inflight_requests == 2 after a second set, got %v", got)
+	}
+}
+
+func TestRecordDecisionLatency_ObservesByTier(t *testing.T) {
+	before := testutil.CollectAndCount(metrics.DecisionLatency)
+	metrics.RecordDecisionLatency("rate_limiter", 5*time.Millisecond)
+	after := testutil.CollectAndCount(metrics.DecisionLatency)
+
+	if after <= before {
+		t.Errorf("expected DecisionLatency observation count to increase, before=%d after=%d", before, after)
+	}
+}
+
+func TestRecordReleaseResult_IncrementsByResult(t *testing.T) {
+	before := testutil.ToFloat64(metrics.ReleaseTotal.WithLabelValues("success"))
+	metrics.RecordReleaseResult("success")
+	after := testutil.ToFloat64(metrics.ReleaseTotal.WithLabelValues("success"))
+
+	if after != before+1 {
+		t.Errorf("expected ReleaseTotal{result=success} to increment by 1, before=%v after=%v", before, after)
+	}
+}
+
+func TestRecordUpstreamError_IncrementsByEndpoint(t *testing.T) {
+	before := testutil.ToFloat64(metrics.UpstreamErrorsTotal.WithLabelValues("check_rate_limit"))
+	metrics.RecordUpstreamError("check_rate_limit")
+	after := testutil.ToFloat64(metrics.UpstreamErrorsTotal.WithLabelValues("check_rate_limit"))
+
+	if after != before+1 {
+		t.Errorf("expected UpstreamErrorsTotal{endpoint=check_rate_limit} to increment by 1, before=%v after=%v", before, after)
 	}
 }
 

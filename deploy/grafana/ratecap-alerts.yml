@@ -1,0 +1,30 @@
+# deploy/grafana/ratecap-alerts.yml
+groups:
+  - name: ratecap
+    rules:
+      - alert: RateCapSustained503Rate
+        expr: sum(rate(ratecap_decisions_total{action="reject_503"}[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RateCap is sustaining a nonzero 503 (load-shed) rate"
+          description: "{{ $value }} rejections/sec over the last 5m — Tier 3 or Tier 4 is actively shedding load."
+
+      - alert: RateCapWorkerNearCapacity
+        expr: ratecap_worker_inflight_requests > (0.9 * on() group_left() (max(ratecap_worker_inflight_requests) or vector(500)))
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tier 4 worker shedder in-flight count is near its configured cap"
+          description: "in-flight={{ $value }} — the sidecar is close to shedding sheddable-priority traffic."
+
+      - alert: RateCapFailOpenSustained
+        expr: sum(rate(ratecap_fail_open_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RateCap Tier 1 is failing open"
+          description: "Tier 1's Redis-backed store is erroring and request-rate limiting is not being enforced. Investigate Redis/core connectivity immediately."

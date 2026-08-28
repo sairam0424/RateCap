@@ -108,7 +108,11 @@ tiers:
 		cfg.Tiers.FleetShedder.ShadowMode,
 	)
 
-	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config) {
+	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config, loadErr error) {
+		if loadErr != nil {
+			t.Logf("ignoring config reload that failed to load: %v", loadErr)
+			return
+		}
 		if err := newCfg.Validate(); err != nil {
 			t.Logf("ignoring invalid config reload: %v", err)
 			return

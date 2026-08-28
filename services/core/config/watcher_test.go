@@ -19,7 +19,7 @@ tiers:
 `)
 
 	changes := make(chan *config.Config, 1)
-	stop, err := config.Watch(path, func(cfg *config.Config) {
+	stop, err := config.Watch(path, func(cfg *config.Config, err error) {
 		changes <- cfg
 	})
 	if err != nil {
@@ -62,7 +62,7 @@ tiers:
 `)
 
 	changes := make(chan *config.Config, 10)
-	stop, err := config.Watch(path, func(cfg *config.Config) {
+	stop, err := config.Watch(path, func(cfg *config.Config, err error) {
 		changes <- cfg
 	})
 	if err != nil {
@@ -128,7 +128,7 @@ tiers:
 `)
 
 	changes := make(chan *config.Config, 1)
-	stop, err := config.Watch(path, func(cfg *config.Config) {
+	stop, err := config.Watch(path, func(cfg *config.Config, err error) {
 		changes <- cfg
 	})
 	if err != nil {
@@ -151,8 +151,14 @@ tiers:
 	time.Sleep(100 * time.Millisecond)
 
 	select {
-	case <-changes:
-		t.Error("onChange should not be called for invalid config")
+	case cfg := <-changes:
+		// A Load failure now invokes onChange(nil, err) so main.go can record
+		// a config_reload_total{result="failure"} metric — this is the new
+		// contract, so the callback firing is fine as long as it never
+		// surfaces a valid cfg for input that failed to parse.
+		if cfg != nil {
+			t.Errorf("onChange should not be called with a valid cfg for invalid config, got %+v", cfg)
+		}
 	case <-time.After(500 * time.Millisecond):
 	}
 
@@ -175,5 +181,48 @@ tiers:
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for recovery after invalid config")
+	}
+}
+
+func TestWatch_CallsOnChangeWithErrorWhenLoadFails(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`)
+
+	type result struct {
+		cfg *config.Config
+		err error
+	}
+	changes := make(chan result, 1)
+	stop, err := config.Watch(path, func(cfg *config.Config, loadErr error) {
+		changes <- result{cfg, loadErr}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error starting watch: %v", err)
+	}
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	malformedYAML := "not: valid: yaml: at: all: [unterminated"
+	if err := os.WriteFile(path, []byte(malformedYAML), 0644); err != nil {
+		t.Fatalf("failed to write malformed config: %v", err)
+	}
+
+	select {
+	case r := <-changes:
+		if r.err == nil {
+			t.Error("expected onChange to be called with a non-nil error for malformed YAML")
+		}
+		if r.cfg != nil {
+			t.Errorf("expected cfg=nil when Load fails, got %+v", r.cfg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for onChange to be called with the Load error")
 	}
 }
