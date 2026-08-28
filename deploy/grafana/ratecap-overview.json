@@ -1,0 +1,81 @@
+{
+  "title": "RateCap Overview",
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Decisions by tier and action",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum by (tier, action) (rate(ratecap_decisions_total[1m]))", "legendFormat": "{{tier}} / {{action}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Shadow-mode would-reject rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum by (tier) (rate(ratecap_shadow_would_reject_total[1m]))", "legendFormat": "{{tier}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Worker in-flight requests (Tier 4)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "ratecap_worker_inflight_requests", "legendFormat": "in-flight" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Fail-open events (Tier 1)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum by (tier, reason) (rate(ratecap_fail_open_total[1m]))", "legendFormat": "{{tier}} / {{reason}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Decision latency (p50/p99) by tier",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le, tier) (rate(ratecap_decision_latency_seconds_bucket[5m])))", "legendFormat": "p50 {{tier}}" },
+        { "expr": "histogram_quantile(0.99, sum by (le, tier) (rate(ratecap_decision_latency_seconds_bucket[5m])))", "legendFormat": "p99 {{tier}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Core gRPC request rate and errors",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "sum by (method, code) (rate(ratecap_core_grpc_requests_total[1m]))", "legendFormat": "{{method}} / {{code}}" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Redis call error rate (core)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "sum by (operation) (rate(ratecap_core_redis_errors_total[1m]))", "legendFormat": "{{operation}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Upstream (sidecar→core) error rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        { "expr": "sum by (endpoint) (rate(ratecap_upstream_errors_total[1m]))", "legendFormat": "{{endpoint}}" }
+      ]
+    }
+  ]
+}

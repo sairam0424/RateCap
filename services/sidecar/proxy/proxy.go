@@ -53,6 +53,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				metrics.RecordDecision("worker_shedder", "reject_503")
 				metrics.SetWorkerInFlight(h.shedder.InFlight())
 				decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+				metrics.RecordDecisionLatency("worker_shedder", time.Since(start))
 				w.Header().Set("X-RateCap-Shed-Tier", "4")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -61,6 +62,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.RecordShadowWouldReject("worker_shedder")
 			metrics.SetWorkerInFlight(h.shedder.InFlight())
 			decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+			metrics.RecordDecisionLatency("worker_shedder", time.Since(start))
 			log.Printf("worker shedder: would have shed request, shadow mode active")
 		} else {
 			metrics.SetWorkerInFlight(h.shedder.InFlight())
@@ -87,6 +89,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("sidecar: /check: upstream call failed: %v", err)
+		metrics.RecordUpstreamError("check_rate_limit")
 		http.Error(w, "upstream check failed", http.StatusInternalServerError)
 		return
 	}
@@ -104,6 +107,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	metrics.RecordDecision(resp.Tier, actionLabel(realAction))
 	decisionlog.Log(resp.Tier, key, actionLabel(realAction), priorityLabel(priority), time.Since(start))
+	metrics.RecordDecisionLatency(resp.Tier, time.Since(start))
 	if action != realAction {
 		metrics.RecordShadowWouldReject(resp.Tier)
 	}
@@ -172,9 +176,12 @@ func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
 	if err != nil {
 		log.Printf("sidecar: /release: upstream call failed: %v", err)
+		metrics.RecordUpstreamError("release_concurrency")
+		metrics.RecordReleaseResult("failure")
 		http.Error(w, "upstream release failed", http.StatusInternalServerError)
 		return
 	}
 
+	metrics.RecordReleaseResult("success")
 	w.WriteHeader(http.StatusOK)
 }

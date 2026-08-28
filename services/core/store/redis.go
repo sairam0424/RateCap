@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+
+	coremetrics "github.com/ratecap/core/metrics"
 )
 
 //go:embed lua/token_bucket.lua
@@ -60,7 +62,9 @@ const concurrencyKeyPrefix = "cc:"
 func (s *RedisStore) CheckAndDecrement(ctx context.Context, key string, rate, burst, cost int) (bool, int64, error) {
 	key = rateLimiterKeyPrefix + key
 	now := time.Now().UnixMilli()
+	start := time.Now()
 	result, err := s.tokenBucket.Run(ctx, s.client, []string{key}, rate, burst, cost, now).Slice()
+	coremetrics.RecordRedisCall("check_and_decrement", time.Since(start), err)
 	if err != nil {
 		return false, 0, err
 	}
@@ -84,7 +88,9 @@ func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, ma
 	now := time.Now().UnixMilli()
 	candidateToken := signToken(uuid.NewString(), s.signingKey)
 
+	start := time.Now()
 	result, err := s.concurrentLimiter.Run(ctx, s.client, []string{key}, cap, maxDurationMs, now, candidateToken).Slice()
+	coremetrics.RecordRedisCall("incr_concurrent", time.Since(start), err)
 	if err != nil {
 		return false, "", err
 	}
@@ -104,5 +110,8 @@ func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, ma
 }
 
 func (s *RedisStore) DecrConcurrent(ctx context.Context, key, token string) error {
-	return s.client.ZRem(ctx, concurrencyKeyPrefix+key, token).Err()
+	start := time.Now()
+	err := s.client.ZRem(ctx, concurrencyKeyPrefix+key, token).Err()
+	coremetrics.RecordRedisCall("decr_concurrent", time.Since(start), err)
+	return err
 }

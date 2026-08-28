@@ -2,15 +2,20 @@ package limiter_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/ratecap/core/limiter"
+	coremetrics "github.com/ratecap/core/metrics"
 )
 
 type fakeStore struct {
 	mu     sync.Mutex
 	tokens map[string]int
+	err    error
 }
 
 func newFakeStore() *fakeStore {
@@ -20,6 +25,10 @@ func newFakeStore() *fakeStore {
 func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, cost int) (bool, int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return false, 0, f.err
+	}
 
 	remaining, ok := f.tokens[key]
 	if !ok {
@@ -139,4 +148,48 @@ func TestTokenBucketLimiter_ConcurrentCheckAndReconfigureIsRaceFree(t *testing.T
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestTokenBucketLimiter_Check_FailsOpenOnStoreError(t *testing.T) {
+	fs := newFakeStore()
+	fs.err = errors.New("dial tcp: connection refused")
+	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
+
+	decision, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("expected fail-open (no error), got: %v", err)
+	}
+	if decision.Action != limiter.ALLOW {
+		t.Errorf("expected Action=ALLOW on a store error (fail-open), got %v", decision.Action)
+	}
+	if decision.Tier != "rate_limiter" {
+		t.Errorf(`expected Tier="rate_limiter", got %q`, decision.Tier)
+	}
+}
+
+func TestTokenBucketLimiter_Check_RecordsFailOpenMetricOnStoreError(t *testing.T) {
+	fs := newFakeStore()
+	fs.err = errors.New("dial tcp: connection refused")
+	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
+
+	before := testutil.ToFloat64(coremetrics.FailOpenTotal.WithLabelValues("rate_limiter", "store_error"))
+	_, _ = l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	after := testutil.ToFloat64(coremetrics.FailOpenTotal.WithLabelValues("rate_limiter", "store_error"))
+
+	if after != before+1 {
+		t.Errorf("expected FailOpenTotal{tier=rate_limiter,reason=store_error} to increment by 1, before=%v after=%v", before, after)
+	}
+}
+
+func TestTokenBucketLimiter_Check_NoStoreErrorDoesNotRecordFailOpen(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
+
+	before := testutil.ToFloat64(coremetrics.FailOpenTotal.WithLabelValues("rate_limiter", "store_error"))
+	_, _ = l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	after := testutil.ToFloat64(coremetrics.FailOpenTotal.WithLabelValues("rate_limiter", "store_error"))
+
+	if after != before {
+		t.Errorf("expected FailOpenTotal unchanged when the store call succeeds, before=%v after=%v", before, after)
+	}
 }
