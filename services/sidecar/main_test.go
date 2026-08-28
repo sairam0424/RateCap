@@ -1,6 +1,13 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/ratecap/sidecar/ratelimit"
+)
 
 func TestResolveMaxInflight_EmptyStringReturnsDefault(t *testing.T) {
 	got := resolveMaxInflight("", 500)
@@ -69,5 +76,48 @@ func TestResolveMaxRPS_NegativeReturnsDefault(t *testing.T) {
 	got := resolveMaxRPS("-5", 1000)
 	if got != 1000 {
 		t.Errorf("expected 1000 for a negative value, got %v", got)
+	}
+}
+
+func TestNewTopMux_MetricsNeverThrottled(t *testing.T) {
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now) // zero burst: every /check call is throttled
+	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	for i := 0; i < 5; i++ {
+		resp, err := http.Get(server.URL + "/metrics")
+		if err != nil {
+			t.Fatalf("unexpected error calling /metrics: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests {
+			t.Fatalf("/metrics was throttled on call %d — it must bypass the request-path rate limiter", i)
+		}
+	}
+}
+
+func TestNewTopMux_CheckIsThrottled(t *testing.T) {
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now)
+	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/check")
+	if err != nil {
+		t.Fatalf("unexpected error calling /check: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected /check to be throttled by a zero-burst limiter, got status %d", resp.StatusCode)
 	}
 }

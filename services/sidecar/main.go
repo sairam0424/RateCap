@@ -25,6 +25,22 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// newTopMux keeps /metrics and /healthz off the same rate limiter that
+// throttles real traffic on /check and /release — a Prometheus scrape must
+// never compete with production requests for the same token bucket, exactly
+// when an operator needs visibility most (e.g. during a real overload event
+// this limiter is throttling).
+func newTopMux(protected http.Handler, limiter *ratelimit.Limiter, metricsHandler http.Handler, healthz http.HandlerFunc) *http.ServeMux {
+	throttled := ratelimit.Middleware(limiter, protected)
+
+	mux := http.NewServeMux()
+	mux.Handle("/check", throttled)
+	mux.Handle("/release", throttled)
+	mux.Handle("/metrics", metricsHandler)
+	mux.HandleFunc("/healthz", healthz)
+	return mux
+}
+
 func resolveMaxInflight(envVal string, defaultVal int64) int64 {
 	if envVal == "" {
 		return defaultVal
@@ -100,15 +116,13 @@ func main() {
 	maxInflight := resolveMaxInflight(os.Getenv("RATECAP_MAX_INFLIGHT_REQUESTS"), 500)
 	shedder := worker.NewShedder(maxInflight)
 
-	mux := http.NewServeMux()
-	mux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
-	mux.Handle("/release", proxy.NewReleaseHandler(client))
-	mux.Handle("/metrics", metrics.Handler())
-	mux.HandleFunc("/healthz", healthzHandler)
+	protectedMux := http.NewServeMux()
+	protectedMux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
+	protectedMux.Handle("/release", proxy.NewReleaseHandler(client))
 
 	maxRPS := resolveMaxRPS(os.Getenv("RATECAP_SIDECAR_MAX_RPS"), 1000)
 	limiter := ratelimit.New(maxRPS)
-	handler := ratelimit.Middleware(limiter, mux)
+	handler := newTopMux(protectedMux, limiter, metrics.Handler(), healthzHandler)
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {
