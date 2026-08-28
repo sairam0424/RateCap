@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -21,8 +22,20 @@ import (
 	"github.com/ratecap/sidecar/worker"
 )
 
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
+// newHealthzHandler treats every connectivity.State except TransientFailure
+// and Shutdown as healthy — including Idle, since grpc.NewClient never
+// dials eagerly, so a never-yet-used connection would otherwise read as a
+// false-negative outage on a sidecar that just started and hasn't served a
+// real request yet.
+func newHealthzHandler(conn *grpc.ClientConn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		state := conn.GetState()
+		if state == connectivity.TransientFailure || state == connectivity.Shutdown {
+			http.Error(w, "core connection unhealthy: "+state.String(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 // newTopMux keeps /metrics and /healthz off the same rate limiter that
@@ -122,7 +135,7 @@ func main() {
 
 	maxRPS := resolveMaxRPS(os.Getenv("RATECAP_SIDECAR_MAX_RPS"), 1000)
 	limiter := ratelimit.New(maxRPS)
-	handler := newTopMux(protectedMux, limiter, metrics.Handler(), healthzHandler)
+	handler := newTopMux(protectedMux, limiter, metrics.Handler(), newHealthzHandler(conn))
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {
