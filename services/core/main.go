@@ -92,11 +92,17 @@ func main() {
 
 	pipeline := limiter.NewPipeline(rateLimiter, concurrencyLimiter, fleetShedder)
 
-	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config) {
-		if err := newCfg.Validate(); err != nil {
-			log.Printf("ignoring invalid config reload: %v", err)
+	stopWatch, err := config.Watch(configPath, func(newCfg *config.Config, loadErr error) {
+		if loadErr != nil {
+			coremetrics.RecordConfigReload("failure")
 			return
 		}
+		if err := newCfg.Validate(); err != nil {
+			log.Printf("ignoring invalid config reload: %v", err)
+			coremetrics.RecordConfigReload("failure")
+			return
+		}
+		coremetrics.RecordConfigReload("success")
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
 		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode, newCfg.Tiers.ConcurrencyLimiter.QueueingEnabled, newCfg.Tiers.ConcurrencyLimiter.MaxBacklog, newCfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs, newCfg.Tiers.ConcurrencyLimiter.PollIntervalMs)
 		fleetShedder.Reconfigure(newCfg.Tiers.FleetShedder.DefaultMaxConcurrent, newCfg.Tiers.FleetShedder.ReservedCriticalPct, newCfg.Tiers.FleetShedder.MaxRequestDurationMs, newCfg.Tiers.FleetShedder.ShadowMode)
