@@ -3,6 +3,8 @@ package limiter
 import (
 	"context"
 	"sync"
+
+	"github.com/ratecap/core/metrics"
 )
 
 type checker interface {
@@ -41,7 +43,15 @@ func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, 
 
 	allowed, retryAfterMs, err := l.store.CheckAndDecrement(ctx, req.Key, rate, burst, req.Cost)
 	if err != nil {
-		return Decision{}, err
+		// Fail OPEN for Tier 1 only, matching Stripe's documented precedent
+		// (fail-open on request-rate, fail-closed on concurrent-requests —
+		// see docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md
+		// Phase 2 item 3). Tiers 2/3 (ConcurrencyLimiter, FleetShedder) do
+		// NOT get this treatment: their whole purpose is bounding concurrent
+		// resource usage, so letting them fail open would remove the bound
+		// they exist to enforce during exactly the outage when it matters most.
+		metrics.RecordFailOpen("rate_limiter", "store_error")
+		return Decision{Action: ALLOW, Tier: "rate_limiter"}, nil
 	}
 
 	if allowed {
