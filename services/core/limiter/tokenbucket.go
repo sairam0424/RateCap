@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ratecap/core/metrics"
+	coremetrics "github.com/ratecap/core/metrics"
 )
 
 type checker interface {
@@ -50,7 +50,7 @@ func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, 
 		// NOT get this treatment: their whole purpose is bounding concurrent
 		// resource usage, so letting them fail open would remove the bound
 		// they exist to enforce during exactly the outage when it matters most.
-		metrics.RecordFailOpen("rate_limiter", "store_error")
+		coremetrics.RecordFailOpen("rate_limiter", "store_error")
 		return Decision{Action: ALLOW, Tier: "rate_limiter"}, nil
 	}
 

@@ -104,7 +104,7 @@ On the wire, `Priority`'s proto zero-value is `PRIORITY_UNSPECIFIED` (0), distin
 | `ratecap_decision_latency_seconds` | sidecar | `tier` | End-to-end `/check` latency histogram, labeled by the tier that produced the final decision. |
 | `ratecap_release_total` | sidecar | `result` | `/release` call outcomes (`success`/`failure`). |
 | `ratecap_upstream_errors_total` | sidecar | `endpoint` | Failed gRPC calls from sidecar to core (`check_rate_limit`, `release_concurrency`). |
-| `ratecap_core_grpc_requests_total` | core | `method`, `code` | Every gRPC request core serves, by RPC name and resulting `google.golang.org/grpc/codes` status string. |
+| `ratecap_core_grpc_requests_total` | core | `method`, `code` | Every *authenticated* gRPC request core serves, by RPC name and resulting `google.golang.org/grpc/codes` status string. The metrics interceptor is chained after the auth interceptor (see `main.go`), so a rejected shared-secret attempt is never counted here. |
 | `ratecap_core_grpc_request_duration_seconds` | core | `method` | gRPC request latency histogram. |
 | `ratecap_core_redis_call_duration_seconds` | core | `operation` | Redis call latency histogram (`check_and_decrement`, `incr_concurrent`, `decr_concurrent`). |
 | `ratecap_core_redis_errors_total` | core | `operation` | Failed Redis calls. |
