@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
+- One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
+
 ## [2.3.2] — 2026-07-20 — Tier 2 Concurrency-Token Security Hotfix
 
 **Semver note:** this release contains a breaking wire-format change (see below) but was tagged as a patch bump (2.3.1 → 2.3.2), inconsistent with this file's stated intent to follow Semantic Versioning. Documented here as an acknowledged exception rather than corrected retroactively (re-tagging a already-published release would be worse) — going forward, a breaking change gets at minimum a minor bump, called out explicitly in its own CHANGELOG entry, the way this one now is.
