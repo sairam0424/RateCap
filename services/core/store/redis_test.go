@@ -9,13 +9,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/ratecap/core/limiter"
+	coremetrics "github.com/ratecap/core/metrics"
 	"github.com/ratecap/core/store"
 )
+
+// histogramSampleCount reads the cumulative observation count for one label
+// combination directly (via the Metric.Write wire format), instead of
+// testutil.CollectAndCount, which counts distinct label combinations, not
+// observations — it would stay flat across repeated calls in this suite
+// since every operation label here is already exercised by earlier tests in
+// this file, making a CollectAndCount-based before/after delta order-dependent.
+func histogramSampleCount(t *testing.T, hv *prometheus.HistogramVec, labelValues ...string) uint64 {
+	t.Helper()
+	var m dto.Metric
+	if err := hv.WithLabelValues(labelValues...).(prometheus.Histogram).Write(&m); err != nil {
+		t.Fatalf("failed to write histogram metric: %v", err)
+	}
+	return m.GetHistogram().GetSampleCount()
+}
 
 var testSigningKey = []byte("test-signing-key-do-not-use-in-production")
 
@@ -448,5 +467,60 @@ func TestConcurrencyLimiter_QueueingPollsRealRedisUntilSlotFrees(t *testing.T) {
 	}
 	if elapsed > 3*time.Second {
 		t.Fatalf("expected to succeed well before the 3s MaxQueueWaitMs deadline, took %v", elapsed)
+	}
+}
+
+func TestCheckAndDecrement_RecordsRedisCallMetric(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	before := histogramSampleCount(t, coremetrics.RedisCallDuration, "check_and_decrement")
+	_, _, err := s.CheckAndDecrement(ctx, "test-key-metric", 10, 5, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	after := histogramSampleCount(t, coremetrics.RedisCallDuration, "check_and_decrement")
+
+	if after != before+1 {
+		t.Errorf("expected RedisCallDuration{operation=check_and_decrement} sample count to increase by 1, before=%d after=%d", before, after)
+	}
+}
+
+func TestIncrConcurrent_RecordsRedisCallMetric(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	before := histogramSampleCount(t, coremetrics.RedisCallDuration, "incr_concurrent")
+	_, _, err := s.IncrConcurrent(ctx, "test-key-metric-incr", 10, 60000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	after := histogramSampleCount(t, coremetrics.RedisCallDuration, "incr_concurrent")
+
+	if after != before+1 {
+		t.Errorf("expected RedisCallDuration{operation=incr_concurrent} sample count to increase by 1, before=%d after=%d", before, after)
+	}
+}
+
+func TestDecrConcurrent_ErrorIncrementsErrorCounter(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	// Closing the client first forces a real connection error on the next
+	// call, giving a genuine non-nil err to assert against instead of
+	// simulating one.
+	if err := client.Close(); err != nil {
+		t.Fatalf("failed to close client: %v", err)
+	}
+
+	before := testutil.ToFloat64(coremetrics.RedisErrorsTotal.WithLabelValues("decr_concurrent"))
+	_ = s.DecrConcurrent(ctx, "test-key", "some-token")
+	after := testutil.ToFloat64(coremetrics.RedisErrorsTotal.WithLabelValues("decr_concurrent"))
+
+	if after != before+1 {
+		t.Errorf("expected RedisErrorsTotal{operation=decr_concurrent} to increment by 1 on a closed-client error, before=%v after=%v", before, after)
 	}
 }
