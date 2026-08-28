@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net"
@@ -24,6 +25,29 @@ import (
 	"github.com/ratecap/core/store"
 	"github.com/ratecap/core/tlsconfig"
 )
+
+// runRedisHealthLoop periodically pings Redis and reflects the result into
+// the gRPC health service, so a probe actually detects a Redis outage
+// instead of the SERVING status set once at startup and never touched again.
+func runRedisHealthLoop(interval time.Duration, ping func(context.Context) error, setStatus func(healthpb.HealthCheckResponse_ServingStatus), stop <-chan struct{}) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), interval)
+			err := ping(ctx)
+			cancel()
+			if err != nil {
+				setStatus(healthpb.HealthCheckResponse_NOT_SERVING)
+				continue
+			}
+			setStatus(healthpb.HealthCheckResponse_SERVING)
+		}
+	}
+}
 
 func main() {
 	configPath := os.Getenv("RATECAP_CONFIG_PATH")
@@ -150,6 +174,13 @@ func main() {
 	}
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	stopHealthLoop := make(chan struct{})
+	defer close(stopHealthLoop)
+	go runRedisHealthLoop(5*time.Second, func(ctx context.Context) error {
+		return redisClient.Ping(ctx).Err()
+	}, func(s healthpb.HealthCheckResponse_ServingStatus) {
+		healthServer.SetServingStatus("", s)
+	}, stopHealthLoop)
 	healthGRPCServer := grpc.NewServer()
 	healthpb.RegisterHealthServer(healthGRPCServer, healthServer)
 	go func() {
