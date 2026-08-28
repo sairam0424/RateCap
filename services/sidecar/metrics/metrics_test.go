@@ -54,6 +54,26 @@ func TestRecordDecisionLatency_ObservesByTier(t *testing.T) {
 	}
 }
 
+func TestRecordReleaseResult_IncrementsByResult(t *testing.T) {
+	before := testutil.ToFloat64(metrics.ReleaseTotal.WithLabelValues("success"))
+	metrics.RecordReleaseResult("success")
+	after := testutil.ToFloat64(metrics.ReleaseTotal.WithLabelValues("success"))
+
+	if after != before+1 {
+		t.Errorf("expected ReleaseTotal{result=success} to increment by 1, before=%v after=%v", before, after)
+	}
+}
+
+func TestRecordUpstreamError_IncrementsByEndpoint(t *testing.T) {
+	before := testutil.ToFloat64(metrics.UpstreamErrorsTotal.WithLabelValues("check_rate_limit"))
+	metrics.RecordUpstreamError("check_rate_limit")
+	after := testutil.ToFloat64(metrics.UpstreamErrorsTotal.WithLabelValues("check_rate_limit"))
+
+	if after != before+1 {
+		t.Errorf("expected UpstreamErrorsTotal{endpoint=check_rate_limit} to increment by 1, before=%v after=%v", before, after)
+	}
+}
+
 func TestHandler_ServesPrometheusExpositionFormat(t *testing.T) {
 	metrics.RecordDecision("worker_shedder", "reject_503")
 

@@ -89,6 +89,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("sidecar: /check: upstream call failed: %v", err)
+		metrics.RecordUpstreamError("check_rate_limit")
 		http.Error(w, "upstream check failed", http.StatusInternalServerError)
 		return
 	}
@@ -175,9 +176,12 @@ func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
 	if err != nil {
 		log.Printf("sidecar: /release: upstream call failed: %v", err)
+		metrics.RecordUpstreamError("release_concurrency")
+		metrics.RecordReleaseResult("failure")
 		http.Error(w, "upstream release failed", http.StatusInternalServerError)
 		return
 	}
 
+	metrics.RecordReleaseResult("success")
 	w.WriteHeader(http.StatusOK)
 }

@@ -29,6 +29,16 @@ var DecisionLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Help: "End-to-end latency of a /check decision as observed by the sidecar, labeled by the tier that produced the final action.",
 }, []string{"tier"})
 
+var ReleaseTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_release_total",
+	Help: "Total number of /release calls handled by the sidecar, labeled by result (success or failure).",
+}, []string{"result"})
+
+var UpstreamErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_upstream_errors_total",
+	Help: "Total number of failed gRPC calls from the sidecar to ratecap-core, labeled by the endpoint that made the call.",
+}, []string{"endpoint"})
+
 func RecordDecision(tier, action string) {
 	DecisionsTotal.WithLabelValues(tier, action).Inc()
 }
@@ -43,6 +53,14 @@ func SetWorkerInFlight(v int64) {
 
 func RecordDecisionLatency(tier string, latency time.Duration) {
 	DecisionLatency.WithLabelValues(tier).Observe(latency.Seconds())
+}
+
+func RecordReleaseResult(result string) {
+	ReleaseTotal.WithLabelValues(result).Inc()
+}
+
+func RecordUpstreamError(endpoint string) {
+	UpstreamErrorsTotal.WithLabelValues(endpoint).Inc()
 }
 
 func Handler() http.Handler {
