@@ -11,6 +11,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
 - One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
 
+## [2.5.0] — 2026-08-28 — Phase 1 Observability Foundation
+
+Minor release: Phase 1 of the v3 upgrade roadmap — `services/core` gains self-instrumentation it previously had none of, the sidecar's `/metrics` no longer shares its self-throttle limiter with real traffic, and both services' health checks reflect real backing-service connectivity instead of static/startup-only state.
+
+### Added
+
+- `ratecap-core` `/metrics` endpoint (new `:9092` listener) — gRPC request count/latency by method and status, Redis call latency/error count, config-reload success/failure count.
+- `ratecap_fail_open_total{tier,reason}` — Tier 1 (request-rate) now fails OPEN on a Redis/store error instead of surfacing an internal error, matching Stripe's documented precedent; Tiers 2/3 remain fail-closed by design (see `ARCHITECTURE.md`'s new Observability section for the full per-tier contract).
+- `ratecap_decision_latency_seconds{tier}`, `ratecap_release_total{result}`, and `ratecap_upstream_errors_total{endpoint}` on the sidecar.
+- Starter Grafana dashboard (`deploy/grafana/ratecap-overview.json`) and baseline alert rules (`deploy/grafana/ratecap-alerts.yml`).
+- An Observability section in `ARCHITECTURE.md` documenting the full metrics contract, the per-tier Redis-down degradation contract, and current tracing limitations.
+
+### Fixed
+
+- Sidecar `/healthz` now reflects real gRPC connectivity to core instead of unconditionally returning 200.
+- Core's gRPC health service now reflects real Redis connectivity (re-checked every 5s) instead of being set to `SERVING` once at startup and never updated again.
+- `/metrics` and `/healthz` on the sidecar no longer share the process-wide self-throttle rate limiter with `/check`/`/release` — a Prometheus scrape can no longer be 429'd by the same limiter throttling real traffic.
+
+## [2.4.1] — 2026-08-27 — Phase 0 Housekeeping & Quick Wins
+
+Patch release: Phase 0 of the v3 upgrade roadmap (see `docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md`) — housekeeping and quick wins, sequenced before any phase that needed a trustworthy version number to build on.
+
+### Fixed
+
+- Tier 2's bounded-queueing backlog counter is now Redis-backed (`store.IncrConcurrent`/`DecrConcurrent` against a `backlog:` key namespace) instead of a per-instance `atomic.Int64` — with N core replicas, the real ceiling was previously `maxBacklog × N`, not one shared ceiling.
+- `bench_run.go`'s `--acquire` path no longer silently drops accepted/rejected/errored request outcomes into the same latency distribution; results are now bucketed separately, and every ticket's `Release()` is called even when the request itself was rejected.
+- Dependency skew across `proto`/`services/core`/`services/sidecar` closed by merging the 4 open Dependabot PRs (grpc, go-redis, testcontainers, x/sys, x/text) in lockstep rather than per-module.
+
+### Added
+
+- `.github/dependabot.yml` covering all Go module directories plus `pip`, `github-actions`, and `docker` ecosystems, grouped, on a weekly schedule.
+- `VERSION` as the single authoritative version source.
+- Merged `fix/v3-config-validation` (Tier 1 `rate_limiter` config validation) and `fix/v3-breaking-wire-changes` (`PRIORITY_UNSPECIFIED` proto enum sentinel — a breaking wire-format renumbering, called out explicitly rather than shipped silently).
+
 ## [2.3.2] — 2026-07-20 — Tier 2 Concurrency-Token Security Hotfix
 
 **Semver note:** this release contains a breaking wire-format change (see below) but was tagged as a patch bump (2.3.1 → 2.3.2), inconsistent with this file's stated intent to follow Semantic Versioning. Documented here as an acknowledged exception rather than corrected retroactively (re-tagging a already-published release would be worse) — going forward, a breaking change gets at minimum a minor bump, called out explicitly in its own CHANGELOG entry, the way this one now is.
