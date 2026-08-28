@@ -8,15 +8,24 @@ RateCap: a hybrid core-engine + sidecar rate-limiter/load-shedder, faithfully re
 
 ## Build & test
 
-- **build all modules**: `for m in proto services/core services/sidecar packages/sdks/go deploy/sampleapp; do (cd "$m" && go build ./...); done` — each module is a separate `go.mod` and must be built individually
-- **test all modules**: `for m in proto services/core services/sidecar packages/sdks/go; do (cd "$m" && go test ./...); done` — runs tests in all Go modules (proto, services/core, services/sidecar, packages/sdks/go; excludes deploy/sampleapp which is a demo binary with no tests)
-- **test one module**: `cd services/core && go test ./... -v`
+- **build all modules**: `for m in proto services/core services/sidecar packages/sdks/go cli deploy/sampleapp; do (cd "$m" && go build ./...); done` — each module is a separate `go.mod` and must be built individually (`cli` is easy to forget here — it's in CI's build matrix but wasn't in this list before)
+- **test all Go modules**: `for m in proto services/core services/sidecar packages/sdks/go cli; do (cd "$m" && go test ./... -race); done` — `-race` matches CI and CONTRIBUTING.md; a real data race in `TokenBucketLimiter.Reconfigure` was caught only this way. `services/core`'s Redis integration tests need Docker running locally. Excludes `deploy/sampleapp` (demo binary, no tests).
+- **test one module**: `cd services/core && go test ./... -race -v`
+- **format check**: `gofmt -l .` must print nothing — this is a CI gate; there is no golangci-lint config in this repo
+- **Python SDK** (`packages/sdks/python` — not a Go module, not in `go.work`): `pip install -e . && python -m unittest discover -s tests -v`
 - **regenerate proto**: `protoc -I proto --go_out=proto --go_opt=module=github.com/ratecap/proto --go-grpc_out=proto --go-grpc_opt=module=github.com/ratecap/proto ratecap/v1/ratecap.proto` (run from repo root; requires `protoc-gen-go` and `protoc-gen-go-grpc` on `PATH`; `-I proto` keeps the file descriptor's canonical name as `ratecap/v1/ratecap.proto`, not `proto/ratecap/v1/ratecap.proto`)
-- **run the demo stack**: `cd deploy && docker compose up --build`
+- **run the demo stack**: `cd deploy && bash generate-demo-certs.sh && docker compose up --build` — the cert-gen step is required first: `docker-compose.yml` hardcodes mTLS env vars for both services, so startup fails on missing cert files without it. (The README's own top-level Quick Start omits this step and is broken as written; its Benchmarks section and CI's e2e-smoke job both include it.)
 
 ## Scope discipline
 
-v1 is locked to Stripe's exact 4 mechanisms — do not add a 5th limiting mechanism, bounded queueing, additional storage backends, or a Rust/WASM core without updating the design spec first and getting explicit sign-off. See the spec's "Explicitly Deferred to v2" and "Out of Scope" sections.
+v1 shipped locked to Stripe's exact 4 mechanisms. v2 additions (e.g. Tier 2's bounded queueing, `queueing_enabled`) only land via a design spec + explicit sign-off first — see `docs/superpowers/specs/` for that history. Don't add a 5th limiting mechanism, additional storage backends, or a Rust/WASM core without the same spec-first process. (`services/sidecar/ratelimit` — a process-wide defensive HTTP limiter wrapping the whole sidecar mux — already exists outside the 4 tiers; it predates and is exempt from this rule, not a violation of it.)
+
+## Gotchas (span multiple files — easy to get wrong)
+
+- `packages/sdks/go` and `packages/sdks/python` have zero relation to `proto/`'s gRPC contract — both are plain HTTP clients to the sidecar's own `/check`/`/release` wire format. The gRPC contract is used only for sidecar↔core traffic.
+- A single `/check` call can return more than one concurrency reservation, as indexed headers `Concurrency-Token-N`/`Concurrency-Key-N` (N=0,1,2…) — e.g. one for the caller's own key (Tier 2) and one for the global `"fleet"` key (Tier 3). Each needs its own `/release` call; both SDKs already loop over these, so any new client code must too.
+- The `x-ratecap-shared-secret` gRPC metadata key is an independently-declared constant in both `services/core/auth` and `services/sidecar/auth` (separate `go.mod`s, no shared package) — changing the literal in one without the other breaks auth at runtime, not compile time.
+- `Config.Validate()` (`services/core/config/config.go`) checks Tier 1's `default_rate`/`default_burst`, the concurrency-limiter/fleet-shedder fields, and queueing — but not the top-level `sync_rate`, which also has no runtime consumer anywhere in the repo despite being required in every deploy config (a vestigial field, not a bug to fix by adding validation for it).
 
 ## Conventions
 
