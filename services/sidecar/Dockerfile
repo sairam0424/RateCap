@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY proto/ proto/
 COPY services/core/ services/core/
@@ -7,6 +7,6 @@ RUN printf 'go 1.26.2\n\nuse ./proto\nuse ./services/core\nuse ./services/sideca
 WORKDIR /src/services/sidecar
 RUN go build -o /ratecap-sidecar .
 
-FROM alpine:3.20
+FROM alpine:3.24
 COPY --from=build /ratecap-sidecar /usr/local/bin/ratecap-sidecar
 ENTRYPOINT ["/usr/local/bin/ratecap-sidecar"]
