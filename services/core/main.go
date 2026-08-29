@@ -214,10 +214,11 @@ func main() {
 		grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
 	}
 	if tlsCertPath != "" && tlsMode != "permissive" {
-		tlsConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
+		tlsConf, stopCertWatch, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
 		if err != nil {
 			log.Fatalf("failed to load TLS config: %v", err)
 		}
+		defer stopCertWatch()
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConf)))
 		log.Printf("ratecap-core: mTLS enabled (mode=%s)", tlsMode)
 	}
@@ -234,10 +235,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to listen on %s: %v", tlsAddr, err)
 		}
-		permissiveConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
+		permissiveConf, stopCertWatch, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
 		if err != nil {
 			log.Fatalf("failed to load TLS config for permissive listener: %v", err)
 		}
+		defer stopCertWatch()
 		// VerifyClientCertIfGiven (not RequireAndVerifyClientCert): permissive
 		// mode's whole purpose is letting sidecars migrate one at a time — a
 		// sidecar without a cert yet must still be able to connect over this
