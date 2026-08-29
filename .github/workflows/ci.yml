@@ -15,13 +15,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module:
-          - proto
-          - services/core
-          - services/sidecar
-          - packages/sdks/go
-          - deploy/sampleapp
-          - cli
+        include:
+          # proto is 100% generated protobuf code with no hand-written logic
+          # and zero test files, so its real coverage is 0% by construction
+          # (verified locally) — the 50% floor below doesn't apply here.
+          - module: proto
+            floor: 0
+          - module: services/core
+            floor: 50
+          - module: services/sidecar
+            floor: 50
+          - module: packages/sdks/go
+            floor: 50
+          # deploy/sampleapp is a demo binary with no tests by design (see
+          # CLAUDE.md's build&test section) — real coverage is 0%.
+          - module: deploy/sampleapp
+            floor: 0
+          - module: cli
+            floor: 50
     services:
       redis:
         image: redis:7-alpine
@@ -45,7 +56,22 @@ jobs:
 
       - name: Test
         working-directory: ${{ matrix.module }}
-        run: go test ./... -race
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Enforce coverage floor
+        working-directory: ${{ matrix.module }}
+        run: |
+          if [ ! -s coverage.out ]; then
+            echo "No coverage data for ${{ matrix.module }} (no test files) — skipping floor check"
+            exit 0
+          fi
+          pct=$(go tool cover -func=coverage.out | tail -1 | awk '{print $NF}' | tr -d '%')
+          echo "Total coverage for ${{ matrix.module }}: ${pct}%"
+          floor=${{ matrix.floor }}
+          if (( $(echo "$pct < $floor" | bc -l) )); then
+            echo "Coverage ${pct}% is below the ${floor}% floor for ${{ matrix.module }}" >&2
+            exit 1
+          fi
 
   gofmt:
     runs-on: ubuntu-latest
@@ -76,11 +102,11 @@ jobs:
 
       - name: Install package
         working-directory: packages/sdks/python
-        run: pip install -e .
+        run: pip install -e . && pip install coverage
 
       - name: Test
         working-directory: packages/sdks/python
-        run: python -m unittest discover -s tests -v
+        run: coverage run -m unittest discover -s tests -v && coverage report --fail-under=50
 
   helm-lint:
     runs-on: ubuntu-latest
