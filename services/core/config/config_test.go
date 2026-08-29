@@ -457,3 +457,55 @@ func TestValidate_AcceptsZeroDefaultBurst(t *testing.T) {
 		t.Fatalf("expected rate_limiter.default_burst=0 to be valid (no burst allowance beyond the steady rate), got error: %v", err)
 	}
 }
+
+func TestConfig_Hash_IsStableForIdenticalContent(t *testing.T) {
+	yaml := `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`
+	cfg1, err := config.Load(writeTempConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg2, err := config.Load(writeTempConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg1.Hash() != cfg2.Hash() {
+		t.Errorf("expected identical config content to hash identically, got %q and %q", cfg1.Hash(), cfg2.Hash())
+	}
+}
+
+func TestConfig_Hash_DiffersForDifferentContent(t *testing.T) {
+	cfg1, err := config.Load(writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg2, err := config.Load(writeTempConfig(t, `
+sync_rate: 10
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg1.Hash() == cfg2.Hash() {
+		t.Error("expected different config content to hash differently")
+	}
+}
