@@ -129,10 +129,11 @@ func main() {
 
 	transportCreds := insecure.NewCredentials()
 	if tlsCertPath != "" {
-		tlsConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
+		tlsConf, stopCertWatch, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
 		if err != nil {
 			log.Fatalf("failed to load TLS config: %v", err)
 		}
+		defer stopCertWatch()
 		transportCreds = credentials.NewTLS(tlsConf)
 		log.Printf("ratecap-sidecar: mTLS enabled")
 	}
