@@ -3,11 +3,10 @@ module github.com/ratecap/sidecar
 go 1.26.2
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/ratecap/proto v0.0.0-00010101000000-000000000000
 	google.golang.org/grpc v1.83.1
 )
-
-require github.com/fsnotify/fsnotify v1.10.1 // indirect
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

@@ -132,6 +132,19 @@ func TestLoad_GetClientCertificateReturnsCurrentCertAfterFileChange(t *testing.T
 	}
 }
 
+func TestLoad_StopEndsTheWatcher(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := writeSelfSignedKeyPair(t, dir, "cert.pem", "key.pem", "sidecar-a")
+	caPath := writeCA(t, dir)
+
+	_, stop, err := tlsconfig.Load(certPath, keyPath, caPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stop()
+	stop()
+}
+
 func TestLoad_KeepsLastKnownGoodOnReloadFailure(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeSelfSignedKeyPair(t, dir, "cert.pem", "key.pem", "sidecar-good")

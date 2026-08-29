@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"log"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
@@ -56,7 +57,8 @@ func watchCert(certPath, keyPath string) (*reloadableCert, func(), error) {
 		}
 	}()
 
-	stop := func() { close(done) }
+	var once sync.Once
+	stop := func() { once.Do(func() { close(done) }) }
 	return r, stop, nil
 }
 
