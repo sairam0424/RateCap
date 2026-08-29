@@ -121,6 +121,8 @@ When a tier's backing Redis call errors (timeout, connection refused, or any oth
 - **Tier 2 (Concurrent Requests Limiter) and Tier 3 (Fleet Usage Load Shedder) fail CLOSED.** The gRPC call returns `codes.Internal`, which the sidecar surfaces as an HTTP 500 to the caller. Both tiers exist specifically to bound concurrent resource usage; failing open would remove that bound during exactly the outage when it matters most.
 - This is a **per-tier** contract, not a whole-pipeline guarantee: `Pipeline.Check` still runs every tier in order, so a total Redis outage still surfaces as a 500 overall once the request reaches Tier 2 or Tier 3, even though Tier 1 itself failed open along the way.
 
+Enforced by real network-fault-injection tests (Toxiproxy, not mocks) in `services/core/reliability/redis_failure_test.go` — `TestTier1_RedisUnavailable_FailsOpen`, `TestTier2_RedisUnavailable_FailsClosed`, `TestTier3_RedisUnavailable_FailsClosed`.
+
 ### Health checks
 
 - `ratecap-sidecar`'s `/healthz` reflects the real gRPC connectivity state to `ratecap-core` (healthy unless the connection is in `TRANSIENT_FAILURE` or `SHUTDOWN`), and — like `/metrics` — bypasses the sidecar's self-throttle limiter.
