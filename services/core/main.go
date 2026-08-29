@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -80,6 +82,22 @@ func newRedisClient(redisAddr, sentinelAddrsRaw, sentinelMasterName string) *red
 	})
 }
 
+// resolveTLSMode defaults an unset RATECAP_TLS_MODE to "off" — the exact
+// pre-Phase-3 behavior (single listener, TLS-only if cert env vars happen
+// to be set, plaintext-only otherwise) — preserved unconditionally so no
+// existing deployment's behavior changes just because this env var now
+// exists.
+func resolveTLSMode(raw string) (string, error) {
+	switch raw {
+	case "":
+		return "off", nil
+	case "off", "permissive", "strict":
+		return raw, nil
+	default:
+		return "", fmt.Errorf("RATECAP_TLS_MODE=%q is invalid — must be one of: off, permissive, strict", raw)
+	}
+}
+
 func main() {
 	configPath := os.Getenv("RATECAP_CONFIG_PATH")
 	if configPath == "" {
@@ -115,6 +133,14 @@ func main() {
 	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
 	if tlsconfig.EnvVarsPartiallySet(tlsCertPath, tlsKeyPath, tlsCAPath) {
 		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
+	}
+
+	tlsMode, err := resolveTLSMode(os.Getenv("RATECAP_TLS_MODE"))
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if (tlsMode == "permissive" || tlsMode == "strict") && tlsCertPath == "" {
+		log.Fatalf("RATECAP_TLS_MODE=%s requires RATECAP_TLS_CERT_PATH/RATECAP_TLS_KEY_PATH/RATECAP_TLS_CA_PATH to be set", tlsMode)
 	}
 
 	sentinelMasterName := os.Getenv("RATECAP_REDIS_SENTINEL_MASTER_NAME")
@@ -187,16 +213,51 @@ func main() {
 	serverOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
 	}
-	if tlsCertPath != "" {
+	if tlsCertPath != "" && tlsMode != "permissive" {
 		tlsConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
 		if err != nil {
 			log.Fatalf("failed to load TLS config: %v", err)
 		}
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConf)))
-		log.Printf("ratecap-core: mTLS enabled")
+		log.Printf("ratecap-core: mTLS enabled (mode=%s)", tlsMode)
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, []byte(concurrencySigningKey)))
+	coreServer := grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, []byte(concurrencySigningKey))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, coreServer)
+
+	if tlsMode == "permissive" {
+		tlsAddr := os.Getenv("RATECAP_GRPC_TLS_ADDR")
+		if tlsAddr == "" {
+			tlsAddr = ":9443"
+		}
+		tlsLis, err := net.Listen("tcp", tlsAddr)
+		if err != nil {
+			log.Fatalf("failed to listen on %s: %v", tlsAddr, err)
+		}
+		permissiveConf, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
+		if err != nil {
+			log.Fatalf("failed to load TLS config for permissive listener: %v", err)
+		}
+		// VerifyClientCertIfGiven (not RequireAndVerifyClientCert): permissive
+		// mode's whole purpose is letting sidecars migrate one at a time — a
+		// sidecar without a cert yet must still be able to connect over this
+		// listener's TLS transport (server-authenticated only), while one that
+		// does present a cert gets it verified.
+		permissiveConf.ClientAuth = tls.VerifyClientCertIfGiven
+		tlsServerOpts := []grpc.ServerOption{
+			grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
+			grpc.Creds(credentials.NewTLS(permissiveConf)),
+		}
+		tlsGrpcServer := grpc.NewServer(tlsServerOpts...)
+		ratecapv1.RegisterRatecapServiceServer(tlsGrpcServer, coreServer)
+		go func() {
+			log.Printf("ratecap-core permissive-mode TLS listener (optional client cert) on %s", tlsAddr)
+			if err := tlsGrpcServer.Serve(tlsLis); err != nil {
+				log.Fatalf("permissive-mode TLS grpc server failed: %v", err)
+			}
+		}()
+		log.Printf("ratecap-core: TLS_MODE=permissive — plaintext still serving on %s, TLS available on %s", listenAddr, tlsAddr)
+	}
 
 	// The health service is served on its own plaintext, unauthenticated
 	// listener rather than the main gRPC port: Kubernetes' native grpc probe
