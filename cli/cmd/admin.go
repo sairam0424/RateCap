@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,13 @@ func newAdminSetLimitCmd() *cobra.Command {
 		Use:   "set-limit",
 		Short: "Instantly change Tier 1's rate or Tier 3's reserved_critical_pct fleet-wide",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if adminSecret == "" {
+				adminSecret = os.Getenv("RATECAP_ADMIN_SECRET")
+			}
+			if adminSecret == "" {
+				return fmt.Errorf("--admin-secret is required (or set RATECAP_ADMIN_SECRET)")
+			}
+
 			body, err := json.Marshal(map[string]any{"tier": tier, "value": value})
 			if err != nil {
 				return err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -36,6 +37,42 @@ func TestAdminSetLimit_SendsCorrectRequestAndPrintsResult(t *testing.T) {
 	}
 	if out.String() == "" {
 		t.Error("expected some output confirming the result")
+	}
+}
+
+func TestAdminSetLimit_FallsBackToEnvVarWhenFlagOmitted(t *testing.T) {
+	var receivedSecret string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSecret = r.Header.Get("X-RateCap-Admin-Secret")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"tier": "rate_limiter", "previous_value": 100, "new_value": 500})
+	}))
+	defer server.Close()
+
+	t.Setenv("RATECAP_ADMIN_SECRET", "env-secret")
+
+	root := NewRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"admin", "set-limit", "--sidecar-addr", server.URL, "--tier", "rate_limiter", "--value", "500"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedSecret != "env-secret" {
+		t.Errorf("expected the RATECAP_ADMIN_SECRET env var to be used when --admin-secret is omitted, got %q", receivedSecret)
+	}
+}
+
+func TestAdminSetLimit_ErrorsWhenNoSecretProvidedEitherWay(t *testing.T) {
+	os.Unsetenv("RATECAP_ADMIN_SECRET")
+
+	root := NewRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"admin", "set-limit", "--sidecar-addr", "http://localhost:1", "--tier", "rate_limiter", "--value", "500"})
+
+	if err := root.Execute(); err == nil {
+		t.Error("expected an error when neither --admin-secret nor RATECAP_ADMIN_SECRET is set")
 	}
 }
 
