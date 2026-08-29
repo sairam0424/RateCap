@@ -4,6 +4,12 @@ redis:
     tag: 7-alpine
     pullPolicy: IfNotPresent
   port: 6379
+  sentinel:
+    enabled: false
+    replicas: 3
+    port: 26379
+    masterName: mymaster
+    quorum: 2
 
 core:
   image:
