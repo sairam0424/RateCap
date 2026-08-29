@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -28,6 +29,17 @@ func (l *FleetShedder) Reconfigure(cap, reservedCriticalPct int, maxDurationMs i
 	l.reservedCriticalPct = reservedCriticalPct
 	l.maxDurationMs = maxDurationMs
 	l.shadowMode = shadowMode
+}
+
+func (l *FleetShedder) SetReservedCriticalPct(pct int) (previous int, err error) {
+	if pct < 0 || pct > 100 {
+		return 0, fmt.Errorf("reserved_critical_pct must be between 0 and 100 inclusive, got %d", pct)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	previous = l.reservedCriticalPct
+	l.reservedCriticalPct = pct
+	return previous, nil
 }
 
 func (l *FleetShedder) Check(ctx context.Context, req Request) (Decision, error) {

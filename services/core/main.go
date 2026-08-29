@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -49,6 +50,36 @@ func runRedisHealthLoop(interval time.Duration, ping func(context.Context) error
 	}
 }
 
+func parseSentinelAddrs(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	addrs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			addrs = append(addrs, trimmed)
+		}
+	}
+	return addrs
+}
+
+// newRedisClient switches to a Sentinel-aware failover client only when
+// sentinel addrs are configured — unset, behavior is byte-for-byte
+// identical to the pre-existing single-instance redis.NewClient.
+func newRedisClient(redisAddr, sentinelAddrsRaw, sentinelMasterName string) *redis.Client {
+	sentinelAddrs := parseSentinelAddrs(sentinelAddrsRaw)
+	if len(sentinelAddrs) == 0 {
+		return redis.NewClient(&redis.Options{Addr: redisAddr})
+	}
+	log.Printf("ratecap-core: using Redis Sentinel (master=%s, sentinels=%v)", sentinelMasterName, sentinelAddrs)
+	return redis.NewFailoverClient(&redis.FailoverOptions{
+		MasterName:    sentinelMasterName,
+		SentinelAddrs: sentinelAddrs,
+	})
+}
+
 func main() {
 	configPath := os.Getenv("RATECAP_CONFIG_PATH")
 	if configPath == "" {
@@ -62,6 +93,7 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid config: %v", err)
 	}
+	coremetrics.RecordConfigVersion(cfg.Hash())
 
 	redisAddr := os.Getenv("RATECAP_REDIS_ADDR")
 	if redisAddr == "" {
@@ -85,7 +117,11 @@ func main() {
 		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
 	}
 
-	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+	sentinelMasterName := os.Getenv("RATECAP_REDIS_SENTINEL_MASTER_NAME")
+	if sentinelMasterName == "" {
+		sentinelMasterName = "mymaster"
+	}
+	redisClient := newRedisClient(redisAddr, os.Getenv("RATECAP_REDIS_SENTINEL_ADDRS"), sentinelMasterName)
 	redisStore := store.NewRedisStore(redisClient, []byte(concurrencySigningKey))
 
 	rateLimiter := limiter.NewTokenBucketLimiter(
@@ -127,6 +163,8 @@ func main() {
 			return
 		}
 		coremetrics.RecordConfigReload("success")
+		coremetrics.RecordConfigVersion(newCfg.Hash())
+		log.Printf("ratecap-core: config reloaded, hash=%s", newCfg.Hash())
 		rateLimiter.Reconfigure(newCfg.Tiers.RateLimiter.DefaultRate, newCfg.Tiers.RateLimiter.DefaultBurst, newCfg.Tiers.RateLimiter.ShadowMode)
 		concurrencyLimiter.Reconfigure(newCfg.Tiers.ConcurrencyLimiter.DefaultMaxConcurrent, newCfg.Tiers.ConcurrencyLimiter.MaxRequestDurationMs, newCfg.Tiers.ConcurrencyLimiter.ShadowMode, newCfg.Tiers.ConcurrencyLimiter.QueueingEnabled, newCfg.Tiers.ConcurrencyLimiter.MaxBacklog, newCfg.Tiers.ConcurrencyLimiter.MaxQueueWaitMs, newCfg.Tiers.ConcurrencyLimiter.PollIntervalMs)
 		fleetShedder.Reconfigure(newCfg.Tiers.FleetShedder.DefaultMaxConcurrent, newCfg.Tiers.FleetShedder.ReservedCriticalPct, newCfg.Tiers.FleetShedder.MaxRequestDurationMs, newCfg.Tiers.FleetShedder.ShadowMode)
@@ -158,7 +196,7 @@ func main() {
 		log.Printf("ratecap-core: mTLS enabled")
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore, []byte(concurrencySigningKey)))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, []byte(concurrencySigningKey)))
 
 	// The health service is served on its own plaintext, unauthenticated
 	// listener rather than the main gRPC port: Kubernetes' native grpc probe

@@ -36,6 +36,16 @@ func (l *TokenBucketLimiter) Reconfigure(rate, burst int, shadowMode bool) {
 	l.shadowMode = shadowMode
 }
 
+// SetRate is a narrow, single-field alternative to Reconfigure for the
+// sub-second incident-response admin lever (no config re-parse, one field).
+func (l *TokenBucketLimiter) SetRate(rate int) (previous int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	previous = l.rate
+	l.rate = rate
+	return previous
+}
+
 func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, error) {
 	l.mu.RLock()
 	rate, burst, shadowMode := l.rate, l.burst, l.shadowMode

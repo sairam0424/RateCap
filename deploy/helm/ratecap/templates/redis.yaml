@@ -1,3 +1,4 @@
+{{- if not .Values.redis.sentinel.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,3 +31,106 @@ spec:
   ports:
     - port: {{ .Values.redis.port }}
       targetPort: {{ .Values.redis.port }}
+{{- else }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-redis
+spec:
+  serviceName: {{ .Release.Name }}-redis-headless
+  replicas: {{ .Values.redis.sentinel.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-redis
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-redis
+    spec:
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          # Pod 0 boots as master; every other pod replicates from pod 0 via
+          # the StatefulSet's own stable DNS name (<name>-N via the headless
+          # service) — no external coordination needed for initial startup.
+          # Sentinel (below) handles promotion if pod 0 later fails.
+          command:
+            - sh
+            - -c
+            - |
+              if [ "$(hostname)" = "{{ .Release.Name }}-redis-0" ]; then
+                exec redis-server --port {{ .Values.redis.port }}
+              else
+                exec redis-server --port {{ .Values.redis.port }} --replicaof {{ .Release.Name }}-redis-0.{{ .Release.Name }}-redis-headless {{ .Values.redis.port }}
+              fi
+          ports:
+            - containerPort: {{ .Values.redis.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis-headless
+spec:
+  clusterIP: None
+  selector:
+    app: {{ .Release.Name }}-redis
+  ports:
+    - port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-redis
+    statefulset.kubernetes.io/pod-name: {{ .Release.Name }}-redis-0
+  ports:
+    - port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-redis-sentinel
+spec:
+  serviceName: {{ .Release.Name }}-redis-sentinel-headless
+  replicas: {{ .Values.redis.sentinel.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-redis-sentinel
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-redis-sentinel
+    spec:
+      containers:
+        - name: sentinel
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command: ["redis-sentinel", "/etc/sentinel/sentinel.conf"]
+          ports:
+            - containerPort: {{ .Values.redis.sentinel.port }}
+          volumeMounts:
+            - name: sentinel-config
+              mountPath: /etc/sentinel
+      volumes:
+        - name: sentinel-config
+          configMap:
+            name: {{ .Release.Name }}-redis-sentinel-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis-sentinel-headless
+spec:
+  clusterIP: None
+  selector:
+    app: {{ .Release.Name }}-redis-sentinel
+  ports:
+    - port: {{ .Values.redis.sentinel.port }}
+      targetPort: {{ .Values.redis.sentinel.port }}
+{{- end }}

@@ -7,6 +7,7 @@ option go_package = "github.com/ratecap/proto/ratecap/v1;ratecapv1";
 service RatecapService {
   rpc CheckRateLimit(CheckRateLimitRequest) returns (CheckRateLimitResponse);
   rpc ReleaseConcurrency(ReleaseConcurrencyRequest) returns (ReleaseConcurrencyResponse);
+  rpc SetDynamicLimit(SetDynamicLimitRequest) returns (SetDynamicLimitResponse);
 }
 
 enum Action {
@@ -48,3 +49,14 @@ message ReleaseConcurrencyRequest {
 }
 
 message ReleaseConcurrencyResponse {}
+
+message SetDynamicLimitRequest {
+  string tier = 1; // "rate_limiter" or "fleet_shedder"
+  int32 value = 2; // rate_limiter: new rate (requests/sec); fleet_shedder: new reserved_critical_pct (0-100)
+}
+
+message SetDynamicLimitResponse {
+  string tier = 1;
+  int32 previous_value = 2;
+  int32 new_value = 3;
+}

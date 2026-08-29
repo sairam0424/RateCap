@@ -4,6 +4,12 @@ redis:
     tag: 7-alpine
     pullPolicy: IfNotPresent
   port: 6379
+  sentinel:
+    enabled: false
+    replicas: 3
+    port: 26379
+    masterName: mymaster
+    quorum: 2
 
 core:
   image:
@@ -71,6 +77,18 @@ sharedSecret:
 concurrencySigningKey:
   existingSecretName: ""
   existingSecretKey: "signing-key"
+
+# adminSecret is BYO-only, same convention as sharedSecret above: the chart
+# never generates or stores a value. Gates the sidecar's /admin/set-limit
+# incident-response lever — deliberately separate from sharedSecret, see
+# SECURITY.md. Create the Secret out-of-band first, e.g.:
+#   kubectl create secret generic ratecap-admin-secret \
+#     --from-literal=admin-secret=<your-admin-secret-value>
+# then set existingSecretName/existingSecretKey to match. Consumed only by
+# the sidecar (core has no concept of this secret).
+adminSecret:
+  existingSecretName: ""
+  existingSecretKey: "admin-secret"
 
 # tls is optional and off by default, matching the existing mTLS precedent
 # (RATECAP_TLS_CERT_PATH/KEY_PATH/CA_PATH). Also BYO-only: create the Secret

@@ -193,3 +193,34 @@ func TestTokenBucketLimiter_Check_NoStoreErrorDoesNotRecordFailOpen(t *testing.T
 		t.Errorf("expected FailOpenTotal unchanged when the store call succeeds, before=%v after=%v", before, after)
 	}
 }
+
+func TestTokenBucketLimiter_SetRate_ChangesEffectiveRate(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
+
+	previous := l.SetRate(999)
+
+	if previous != 100 {
+		t.Errorf("expected previous rate of 100, got %d", previous)
+	}
+}
+
+func TestTokenBucketLimiter_SetRate_ConcurrentWithCheckIsRaceFree(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			l.SetRate(n)
+		}(i)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = l.Check(context.Background(), limiter.Request{Key: "k", Cost: 1})
+		}()
+	}
+	wg.Wait()
+}

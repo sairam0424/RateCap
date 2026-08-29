@@ -11,6 +11,7 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newBenchCmd())
+	root.AddCommand(newAdminCmd())
 	return root
 }
 

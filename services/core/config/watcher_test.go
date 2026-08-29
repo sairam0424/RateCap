@@ -226,3 +226,175 @@ tiers:
 		t.Fatal("timed out waiting for onChange to be called with the Load error")
 	}
 }
+
+func TestWatch_SurvivesPartialWrite(t *testing.T) {
+	path := writeTempConfig(t, `
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`)
+
+	changes := make(chan *config.Config, 5)
+	stop, err := config.Watch(path, func(cfg *config.Config, loadErr error) {
+		if loadErr == nil {
+			changes <- cfg
+		}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error starting watch: %v", err)
+	}
+	defer stop()
+	time.Sleep(100 * time.Millisecond)
+
+	// Simulate a partial write: truncate then write only the first half of
+	// valid YAML, without the closing content — a real interrupted-write
+	// scenario, distinct from TestWatch_SkipsInvalidConfigWithoutCrashing's
+	// well-formed-but-semantically-invalid case.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open for partial write: %v", err)
+	}
+	if _, err := f.WriteString("sync_rate: 10\ntiers:\n  rate_lim"); err != nil {
+		t.Fatalf("failed to write partial content: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close after partial write: %v", err)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+	select {
+	case cfg := <-changes:
+		t.Errorf("expected no onChange for a partial/truncated write, got a config with SyncRate=%d", cfg.SyncRate)
+	default:
+	}
+
+	validContents := `
+sync_rate: 20
+tiers:
+  rate_limiter:
+    default_rate: 300
+    default_burst: 1500
+    shadow_mode: false
+`
+	if err := os.WriteFile(path, []byte(validContents), 0644); err != nil {
+		t.Fatalf("failed to write recovery content: %v", err)
+	}
+
+	select {
+	case cfg := <-changes:
+		if cfg.SyncRate != 20 {
+			t.Errorf("expected recovery reload with SyncRate=20, got %d", cfg.SyncRate)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for recovery reload after a partial write")
+	}
+}
+
+func TestWatch_SurvivesAtomicRenameSwap(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/ratecap.yaml"
+	if err := os.WriteFile(path, []byte(`
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`), 0644); err != nil {
+		t.Fatalf("failed to write initial config: %v", err)
+	}
+
+	changes := make(chan *config.Config, 5)
+	stop, err := config.Watch(path, func(cfg *config.Config, loadErr error) {
+		if loadErr == nil {
+			changes <- cfg
+		}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error starting watch: %v", err)
+	}
+	defer stop()
+	time.Sleep(100 * time.Millisecond)
+
+	// Atomic rename-swap: write to a temp file in the same directory, then
+	// os.Rename over the watched path — the pattern tools like Kubernetes
+	// ConfigMap volume mounts and `mv` use, distinct from an in-place write.
+	tmpPath := dir + "/ratecap.yaml.tmp"
+	if err := os.WriteFile(tmpPath, []byte(`
+sync_rate: 30
+tiers:
+  rate_limiter:
+    default_rate: 400
+    default_burst: 2000
+    shadow_mode: false
+`), 0644); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		t.Fatalf("failed to atomically rename over watched path: %v", err)
+	}
+
+	select {
+	case cfg := <-changes:
+		if cfg.SyncRate != 30 {
+			t.Errorf("expected reload via rename-swap with SyncRate=30, got %d", cfg.SyncRate)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reload after an atomic rename-swap")
+	}
+}
+
+func TestWatch_SurvivesDeleteAndRecreate(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/ratecap.yaml"
+	if err := os.WriteFile(path, []byte(`
+sync_rate: 5
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`), 0644); err != nil {
+		t.Fatalf("failed to write initial config: %v", err)
+	}
+
+	changes := make(chan *config.Config, 5)
+	stop, err := config.Watch(path, func(cfg *config.Config, loadErr error) {
+		if loadErr == nil {
+			changes <- cfg
+		}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error starting watch: %v", err)
+	}
+	defer stop()
+	time.Sleep(100 * time.Millisecond)
+
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("failed to delete watched file: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := os.WriteFile(path, []byte(`
+sync_rate: 40
+tiers:
+  rate_limiter:
+    default_rate: 500
+    default_burst: 2500
+    shadow_mode: false
+`), 0644); err != nil {
+		t.Fatalf("failed to recreate watched file: %v", err)
+	}
+
+	select {
+	case cfg := <-changes:
+		if cfg.SyncRate != 40 {
+			t.Errorf("expected reload after delete+recreate with SyncRate=40, got %d", cfg.SyncRate)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reload after delete+recreate — fsnotify.Add watches a directory here, so a recreated file under the same dir should still be seen")
+	}
+}

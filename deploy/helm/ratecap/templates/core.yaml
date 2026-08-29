@@ -24,6 +24,16 @@ spec:
               value: /etc/ratecap/ratecap.yaml
             - name: RATECAP_REDIS_ADDR
               value: "{{ .Release.Name }}-redis:{{ .Values.redis.port }}"
+            {{- if .Values.redis.sentinel.enabled }}
+            {{- $sentinelAddrs := list }}
+            {{- range $i := until (int .Values.redis.sentinel.replicas) }}
+            {{- $sentinelAddrs = append $sentinelAddrs (printf "%s-redis-sentinel-%d.%s-redis-sentinel-headless:%d" $.Release.Name $i $.Release.Name (int $.Values.redis.sentinel.port)) }}
+            {{- end }}
+            - name: RATECAP_REDIS_SENTINEL_ADDRS
+              value: "{{ join "," $sentinelAddrs }}"
+            - name: RATECAP_REDIS_SENTINEL_MASTER_NAME
+              value: "{{ .Values.redis.sentinel.masterName }}"
+            {{- end }}
             - name: RATECAP_GRPC_ADDR
               value: ":{{ .Values.core.grpcPort }}"
             - name: RATECAP_HEALTH_ADDR
