@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -49,6 +50,36 @@ func runRedisHealthLoop(interval time.Duration, ping func(context.Context) error
 	}
 }
 
+func parseSentinelAddrs(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	addrs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			addrs = append(addrs, trimmed)
+		}
+	}
+	return addrs
+}
+
+// newRedisClient switches to a Sentinel-aware failover client only when
+// sentinel addrs are configured — unset, behavior is byte-for-byte
+// identical to the pre-existing single-instance redis.NewClient.
+func newRedisClient(redisAddr, sentinelAddrsRaw, sentinelMasterName string) *redis.Client {
+	sentinelAddrs := parseSentinelAddrs(sentinelAddrsRaw)
+	if len(sentinelAddrs) == 0 {
+		return redis.NewClient(&redis.Options{Addr: redisAddr})
+	}
+	log.Printf("ratecap-core: using Redis Sentinel (master=%s, sentinels=%v)", sentinelMasterName, sentinelAddrs)
+	return redis.NewFailoverClient(&redis.FailoverOptions{
+		MasterName:    sentinelMasterName,
+		SentinelAddrs: sentinelAddrs,
+	})
+}
+
 func main() {
 	configPath := os.Getenv("RATECAP_CONFIG_PATH")
 	if configPath == "" {
@@ -86,7 +117,11 @@ func main() {
 		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
 	}
 
-	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+	sentinelMasterName := os.Getenv("RATECAP_REDIS_SENTINEL_MASTER_NAME")
+	if sentinelMasterName == "" {
+		sentinelMasterName = "mymaster"
+	}
+	redisClient := newRedisClient(redisAddr, os.Getenv("RATECAP_REDIS_SENTINEL_ADDRS"), sentinelMasterName)
 	redisStore := store.NewRedisStore(redisClient, []byte(concurrencySigningKey))
 
 	rateLimiter := limiter.NewTokenBucketLimiter(
