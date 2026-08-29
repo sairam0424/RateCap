@@ -196,7 +196,7 @@ func main() {
 		log.Printf("ratecap-core: mTLS enabled")
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
-	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore, []byte(concurrencySigningKey)))
+	ratecapv1.RegisterRatecapServiceServer(grpcServer, grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, []byte(concurrencySigningKey)))
 
 	// The health service is served on its own plaintext, unauthenticated
 	// listener rather than the main gRPC port: Kubernetes' native grpc probe
