@@ -1,4 +1,3 @@
-// services/core/limiter/property_test.go
 package limiter_test
 
 import (

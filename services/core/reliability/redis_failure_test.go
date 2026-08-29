@@ -1,4 +1,3 @@
-// services/core/reliability/redis_failure_test.go
 package reliability_test
 
 import (
@@ -166,11 +165,30 @@ func TestTier1_RedisRecovers_ResumesNormalOperation(t *testing.T) {
 	cut(false)
 	time.Sleep(200 * time.Millisecond)
 
+	// A fresh-key ALLOW alone can't distinguish genuine recovery from Tier 1
+	// still failing open (both produce the identical {ALLOW, err=nil} shape)
+	// — assert the fail-open counter does NOT increment on this call, and
+	// that a second check against the SAME key is rejected once burst is
+	// exhausted, which only happens if Redis is really back and decrementing
+	// server-side state (fail-open never persists any state at all).
+	before := testutil.ToFloat64(coremetrics.FailOpenTotal.WithLabelValues("rate_limiter", "store_error"))
 	decision, err = tokenBucket.Check(context.Background(), limiter.Request{Key: "toxiproxy-tier1-recovery-2", Cost: 1})
+	after := testutil.ToFloat64(coremetrics.FailOpenTotal.WithLabelValues("rate_limiter", "store_error"))
 	if err != nil {
 		t.Fatalf("expected a normal decision once Redis recovers, got error: %v", err)
 	}
 	if decision.Action != limiter.ALLOW {
 		t.Errorf("expected a fresh key's first request to be ALLOW once Redis recovers, got %v", decision.Action)
+	}
+	if after != before {
+		t.Errorf("expected FailOpenTotal unchanged once Redis recovers (this ALLOW must be a real decision, not fail-open), before=%v after=%v", before, after)
+	}
+
+	decision, err = tokenBucket.Check(context.Background(), limiter.Request{Key: "toxiproxy-tier1-recovery-2", Cost: 1})
+	if err != nil {
+		t.Fatalf("expected a normal decision on the second call to the same key, got error: %v", err)
+	}
+	if decision.Action == limiter.ALLOW {
+		t.Error("expected the second request against a burst-of-1 key to be rejected — an ALLOW here would mean no real server-side state was ever decremented, i.e. Tier 1 is still failing open despite the proxy being re-enabled")
 	}
 }

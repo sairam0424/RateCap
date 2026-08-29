@@ -1,4 +1,3 @@
-// services/core/limiter/priority_race_test.go
 package limiter_test
 
 import (
