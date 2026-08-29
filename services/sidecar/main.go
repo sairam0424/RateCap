@@ -14,6 +14,7 @@ import (
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
 
+	"github.com/ratecap/sidecar/admin"
 	"github.com/ratecap/sidecar/auth"
 	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/proxy"
@@ -43,7 +44,7 @@ func newHealthzHandler(conn *grpc.ClientConn) http.HandlerFunc {
 // never compete with production requests for the same token bucket, exactly
 // when an operator needs visibility most (e.g. during a real overload event
 // this limiter is throttling).
-func newTopMux(protected http.Handler, limiter *ratelimit.Limiter, metricsHandler http.Handler, healthz http.HandlerFunc) *http.ServeMux {
+func newTopMux(protected http.Handler, limiter *ratelimit.Limiter, metricsHandler http.Handler, healthz http.HandlerFunc, adminHandler http.Handler) *http.ServeMux {
 	throttled := ratelimit.Middleware(limiter, protected)
 
 	mux := http.NewServeMux()
@@ -51,6 +52,7 @@ func newTopMux(protected http.Handler, limiter *ratelimit.Limiter, metricsHandle
 	mux.Handle("/release", throttled)
 	mux.Handle("/metrics", metricsHandler)
 	mux.HandleFunc("/healthz", healthz)
+	mux.Handle("/admin/set-limit", adminHandler)
 	return mux
 }
 
@@ -113,6 +115,11 @@ func main() {
 		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-sidecar refuses to start without gRPC authentication configured")
 	}
 
+	adminSecret := os.Getenv("RATECAP_ADMIN_SECRET")
+	if adminSecret == "" {
+		log.Fatalf("RATECAP_ADMIN_SECRET must be set — ratecap-sidecar refuses to start without the admin-lever endpoint's own authentication configured")
+	}
+
 	tlsCertPath := os.Getenv("RATECAP_TLS_CERT_PATH")
 	tlsKeyPath := os.Getenv("RATECAP_TLS_KEY_PATH")
 	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
@@ -152,7 +159,7 @@ func main() {
 
 	maxRPS := resolveMaxRPS(os.Getenv("RATECAP_SIDECAR_MAX_RPS"), 1000)
 	limiter := ratelimit.New(maxRPS)
-	handler := newTopMux(protectedMux, limiter, metrics.Handler(), newHealthzHandler(conn))
+	handler := newTopMux(protectedMux, limiter, metrics.Handler(), newHealthzHandler(conn), admin.NewHandler(client, adminSecret))
 
 	listenAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if listenAddr == "" {

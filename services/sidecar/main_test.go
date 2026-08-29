@@ -119,8 +119,9 @@ func TestNewTopMux_MetricsNeverThrottled(t *testing.T) {
 	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now) // zero burst: every /check call is throttled
 	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 
-	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz)
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -141,8 +142,9 @@ func TestNewTopMux_CheckIsThrottled(t *testing.T) {
 	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now)
 	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 
-	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz)
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 

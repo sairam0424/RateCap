@@ -62,6 +62,12 @@ v2.3.2 fixes both halves:
 
 **Residual limitation, by design:** this signature proves a token was genuinely issued by this `ratecap-core` instance — it does not bind the token to the specific caller who acquired it. Any authenticated sidecar client (auth is service-to-service via the shared secret, not per-end-user) that somehow obtains a valid signed token can still release it, the same way any authenticated caller could before this fix. This matches RateCap's existing shared-secret trust model (see Network Transport Security above) rather than introducing a new one; true per-caller ownership binding would require a caller-identity concept RateCap does not have, and is out of scope for this fix.
 
+## Admin lever (`/admin/set-limit`)
+
+A sub-second incident-response endpoint for changing Tier 1's rate or Tier 3's `reserved_critical_pct` fleet-wide without a config re-parse. Gated by its own secret, `RATECAP_ADMIN_SECRET`, checked at the sidecar's HTTP layer via the `X-RateCap-Admin-Secret` header — deliberately separate from `RATECAP_SHARED_SECRET`, since this capability has fleet-wide, effectively unbounded blast radius (unlike `/check`, which is self-bounding). A leaked admin secret lets an attacker disable rate limiting or fleet load-shedding fleet-wide in one call; rotate it independently of the general shared secret if either is suspected of leaking.
+
+This endpoint is bound by the same network-level trust boundary as the rest of the sidecar's HTTP surface (see "Network Transport Security" above) — the admin secret is defense-in-depth on top of that, not a replacement for running RateCap on a private, trusted network.
+
 ## Priority Claims (v1)
 
 `ratecap-sidecar` resolves each request's priority (`critical` or `sheddable`) from the caller-supplied `x-ratecap-priority` HTTP header with no authentication, no cost, and no verification (`services/sidecar/proxy/priority.go`). Tier 3 (the Fleet Usage Load Shedder) uses this value to decide whether a request is checked against the full fleet capacity (`critical`) or a reduced, shed-first capacity (`sheddable`). This is v1's explicit, intentional trust boundary:
