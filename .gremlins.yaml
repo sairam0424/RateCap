@@ -1,0 +1,8 @@
+unleash:
+  dry-run: false
+  test-cpu: 1
+  timeout-coefficient: 3
+  integration: false
+  threshold:
+    efficacy: 60
+    mutant-coverage: 30

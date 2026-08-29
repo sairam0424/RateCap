@@ -124,6 +124,35 @@ jobs:
       - name: Template with mTLS enabled
         run: helm template test-release deploy/helm/ratecap --set sharedSecret.existingSecretName=test-secret --set concurrencySigningKey.existingSecretName=test-signing-key --set sampleapp.enabled=true --set tls.enabled=true --set tls.core.existingSecretName=test-core-tls --set tls.sidecar.existingSecretName=test-sidecar-tls
 
+  mutation-testing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+
+      - name: Install gremlins
+        # v0.5.4 (as originally planned) does not exist on the module proxy —
+        # verified against https://proxy.golang.org/github.com/go-gremlins/gremlins/@v/list;
+        # v0.6.0 is the latest real tag.
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+
+      - name: Mutation test services/core/limiter
+        working-directory: services/core
+        # --config points at the repo-root .gremlins.yaml explicitly: gremlins'
+        # own config auto-discovery walks up only to the nearest go.mod, which
+        # is this directory itself, so the repo-root file is otherwise never
+        # found (verified locally). Path is a directory, not a package pattern
+        # ("./limiter/..." errors with "matched no packages" — gremlins appends
+        # its own "/..." suffix internally).
+        run: $(go env GOPATH)/bin/gremlins unleash --config ../../.gremlins.yaml ./limiter
+
+      - name: Mutation test packages/sdks/go
+        working-directory: packages/sdks/go
+        run: $(go env GOPATH)/bin/gremlins unleash --config ../../../.gremlins.yaml .
+
   docker-build:
     runs-on: ubuntu-latest
     strategy:
