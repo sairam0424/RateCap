@@ -11,6 +11,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
 - One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
 
+## [2.6.0] — 2026-08-28 — Phase 2 Reliability & Testing Hardening
+
+Minor release: Phase 2 of the v3 upgrade roadmap — RateCap's core architectural claims (fail-open/fail-closed, atomicity, no-flapping) are now tested invariants instead of assumptions, Redis can run HA via Sentinel, and on-call has a sub-second incident-response lever.
+
+### Added
+
+- Toxiproxy-based real-network-fault regression tests proving Tier 1 fails open and Tiers 2/3 fail closed on a Redis outage (`services/core/reliability`).
+- Race regression tests for the priority-partition-at-capacity bug class (Tier 2 and Tier 3) and a concurrent stress test for `services/sidecar/decisionlog`.
+- Property-based tests (`pgregory.net/rapid`) for `TokenBucketLimiter` and `ConcurrencyLimiter`.
+- Fault-injection tests for the fsnotify config hot-reload path (partial writes, atomic rename-swap, delete+recreate).
+- `Config.Hash()` and `ratecap_core_config_version_info{hash}` for detecting cross-replica config divergence during a rollout.
+- Coverage measurement + a 50% floor CI gate across all Go modules and the Python SDK; a Gremlins mutation-testing CI gate scoped to `services/core/limiter` and `packages/sdks/go`.
+- Opt-in Redis Sentinel support: `RATECAP_REDIS_SENTINEL_ADDRS`/`RATECAP_REDIS_SENTINEL_MASTER_NAME` on `ratecap-core`, and a `redis.sentinel.enabled` Helm values flag (default `false`).
+- Gradual Tier 4 shed-curve ramping (`RATECAP_SHED_RAMP_START_PCT`), replacing a hard on/off cutoff.
+- A new `SetDynamicLimit` gRPC RPC and a sidecar `/admin/set-limit` HTTP endpoint (gated by a new, separate `RATECAP_ADMIN_SECRET`) for instantly changing Tier 1's rate or Tier 3's `reserved_critical_pct` fleet-wide without a config re-parse — plus `ratecapctl admin set-limit`.
+
+### Security
+
+- The new admin lever requires its own secret (`RATECAP_ADMIN_SECRET`), separate from `RATECAP_SHARED_SECRET`, given its fleet-wide and effectively unbounded blast radius compared to a normal `/check` call.
+
 ## [2.5.0] — 2026-08-28 — Phase 1 Observability Foundation
 
 Minor release: Phase 1 of the v3 upgrade roadmap — `services/core` gains self-instrumentation it previously had none of, the sidecar's `/metrics` no longer shares its self-throttle limiter with real traffic, and both services' health checks reflect real backing-service connectivity instead of static/startup-only state.
