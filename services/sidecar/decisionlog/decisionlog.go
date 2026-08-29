@@ -24,11 +24,15 @@ func SetOutput(w io.Writer) {
 	logger = slog.New(slog.NewJSONHandler(w, nil))
 }
 
+// Log holds mu for the full write, not just the logger read: SetOutput
+// builds a brand-new *slog.Logger (with its own internal handler mutex)
+// wrapping the same io.Writer each call, so two different logger snapshots
+// can otherwise race on that shared writer even though each individually
+// looks single-writer-safe.
 func Log(tier, key, action, priority string, latency time.Duration) {
 	mu.Lock()
-	l := logger
-	mu.Unlock()
-	l.Info("decision",
+	defer mu.Unlock()
+	logger.Info("decision",
 		"tier", tier,
 		"key", key,
 		"action", action,

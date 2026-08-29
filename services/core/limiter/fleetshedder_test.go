@@ -317,3 +317,28 @@ func TestFleetShedder_ReconfigureChangesReservedPct(t *testing.T) {
 		t.Fatalf("expected ALLOW after reconfiguring reservedCriticalPct=0 (sheddable cap=10*(100-0)/100=10, only 1 reservation exists), got %v", d.Action)
 	}
 }
+
+func TestFleetShedder_SetReservedCriticalPct_ChangesEffectivePct(t *testing.T) {
+	fs := newFakeFleetStore()
+	l := limiter.NewFleetShedder(fs, 100, 20, 60000, false)
+
+	previous, err := l.SetReservedCriticalPct(50)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if previous != 20 {
+		t.Errorf("expected previous pct of 20, got %d", previous)
+	}
+}
+
+func TestFleetShedder_SetReservedCriticalPct_RejectsOutOfRangeValue(t *testing.T) {
+	fs := newFakeFleetStore()
+	l := limiter.NewFleetShedder(fs, 100, 20, 60000, false)
+
+	if _, err := l.SetReservedCriticalPct(101); err == nil {
+		t.Error("expected an error for a value above 100")
+	}
+	if _, err := l.SetReservedCriticalPct(-1); err == nil {
+		t.Error("expected an error for a negative value")
+	}
+}

@@ -25,15 +25,25 @@ type concurrencyReleaser interface {
 	DecrConcurrent(ctx context.Context, key, token string) error
 }
 
-type Server struct {
-	ratecapv1.UnimplementedRatecapServiceServer
-	pipeline   checker
-	releaser   concurrencyReleaser
-	signingKey []byte
+type dynamicLimitSetter interface {
+	SetRate(rate int) (previous int)
 }
 
-func NewServer(p checker, releaser concurrencyReleaser, signingKey []byte) *Server {
-	return &Server{pipeline: p, releaser: releaser, signingKey: signingKey}
+type reservedPctSetter interface {
+	SetReservedCriticalPct(pct int) (previous int, err error)
+}
+
+type Server struct {
+	ratecapv1.UnimplementedRatecapServiceServer
+	pipeline     checker
+	releaser     concurrencyReleaser
+	rateLimiter  dynamicLimitSetter
+	fleetShedder reservedPctSetter
+	signingKey   []byte
+}
+
+func NewServer(p checker, releaser concurrencyReleaser, rateLimiter dynamicLimitSetter, fleetShedder reservedPctSetter, signingKey []byte) *Server {
+	return &Server{pipeline: p, releaser: releaser, rateLimiter: rateLimiter, fleetShedder: fleetShedder, signingKey: signingKey}
 }
 
 // verifyToken confirms a Tier 2 concurrency token was actually issued by
@@ -99,6 +109,24 @@ func (s *Server) ReleaseConcurrency(ctx context.Context, req *ratecapv1.ReleaseC
 		return nil, internalError("ReleaseConcurrency", err)
 	}
 	return &ratecapv1.ReleaseConcurrencyResponse{}, nil
+}
+
+func (s *Server) SetDynamicLimit(ctx context.Context, req *ratecapv1.SetDynamicLimitRequest) (*ratecapv1.SetDynamicLimitResponse, error) {
+	switch req.Tier {
+	case "rate_limiter":
+		previous := s.rateLimiter.SetRate(int(req.Value))
+		log.Printf("grpcserver: SetDynamicLimit: rate_limiter rate changed %d -> %d", previous, req.Value)
+		return &ratecapv1.SetDynamicLimitResponse{Tier: req.Tier, PreviousValue: int32(previous), NewValue: req.Value}, nil
+	case "fleet_shedder":
+		previous, err := s.fleetShedder.SetReservedCriticalPct(int(req.Value))
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		log.Printf("grpcserver: SetDynamicLimit: fleet_shedder reserved_critical_pct changed %d -> %d", previous, req.Value)
+		return &ratecapv1.SetDynamicLimitResponse{Tier: req.Tier, PreviousValue: int32(previous), NewValue: req.Value}, nil
+	default:
+		return nil, status.Error(codes.InvalidArgument, `tier must be "rate_limiter" or "fleet_shedder"`)
+	}
 }
 
 func internalError(context string, err error) error {

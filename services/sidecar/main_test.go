@@ -44,6 +44,41 @@ func TestResolveMaxInflight_NegativeReturnsDefault(t *testing.T) {
 	}
 }
 
+func TestResolveRampStartPct_EmptyStringReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for empty string, got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_ValidValueIsUsed(t *testing.T) {
+	got := resolveRampStartPct("80", 100)
+	if got != 80 {
+		t.Errorf("expected 80, got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_UnparseableStringReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("not-a-number", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for an unparseable value, got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_ZeroReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("0", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for a zero value (out of range), got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_AboveOneHundredReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("150", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for a value above 100, got %d", got)
+	}
+}
+
 func TestResolveMaxRPS_EmptyStringReturnsDefault(t *testing.T) {
 	got := resolveMaxRPS("", 1000)
 	if got != 1000 {
@@ -84,8 +119,9 @@ func TestNewTopMux_MetricsNeverThrottled(t *testing.T) {
 	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now) // zero burst: every /check call is throttled
 	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 
-	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz)
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -106,8 +142,9 @@ func TestNewTopMux_CheckIsThrottled(t *testing.T) {
 	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now)
 	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 
-	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz)
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 

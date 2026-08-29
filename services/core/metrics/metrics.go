@@ -42,6 +42,13 @@ var FailOpenTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "Total number of requests allowed through via fail-open behavior after a tier's backing store call errored.",
 }, []string{"tier", "reason"})
 
+var ConfigVersionInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "ratecap_core_config_version_info",
+	Help: "Info metric (always 1) whose hash label is the currently-active config's content hash — compare this label across replicas to detect hot-reload divergence.",
+}, []string{"hash"})
+
+var currentConfigHash string
+
 func RecordGRPCRequest(method, code string, duration time.Duration) {
 	GRPCRequestsTotal.WithLabelValues(method, code).Inc()
 	GRPCRequestDuration.WithLabelValues(method).Observe(duration.Seconds())
@@ -60,6 +67,18 @@ func RecordConfigReload(result string) {
 
 func RecordFailOpen(tier, reason string) {
 	FailOpenTotal.WithLabelValues(tier, reason).Inc()
+}
+
+// RecordConfigVersion clears the previous hash's series (if any) and sets
+// the new one to 1, so ratecap_core_config_version_info always has exactly
+// one active series per replica rather than accumulating a stale series per
+// historical hash forever.
+func RecordConfigVersion(hash string) {
+	if currentConfigHash != "" && currentConfigHash != hash {
+		ConfigVersionInfo.DeleteLabelValues(currentConfigHash)
+	}
+	currentConfigHash = hash
+	ConfigVersionInfo.WithLabelValues(hash).Set(1)
 }
 
 func Handler() http.Handler {

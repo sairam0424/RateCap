@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -84,4 +87,15 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Hash returns a short, stable content hash of the config, independent of
+// key ordering or whitespace in the source YAML — two replicas that loaded
+// byte-different but semantically identical files must still agree.
+// json.Marshal (not the raw YAML bytes) is the content this hashes, since
+// struct field order is fixed by the Go type, unlike YAML key order.
+func (c *Config) Hash() string {
+	data, _ := json.Marshal(c)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])[:12]
 }

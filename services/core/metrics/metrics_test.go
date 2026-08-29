@@ -68,3 +68,19 @@ func TestRecordFailOpen_IncrementsByTierAndReason(t *testing.T) {
 		t.Errorf("expected FailOpenTotal{tier=rate_limiter,reason=store_error} to increment by 1, before=%v after=%v", before, after)
 	}
 }
+
+func TestRecordConfigVersion_ClearsPreviousHashSeries(t *testing.T) {
+	metrics.RecordConfigVersion("hash-aaa")
+	if got := testutil.ToFloat64(metrics.ConfigVersionInfo.WithLabelValues("hash-aaa")); got != 1 {
+		t.Errorf("expected hash-aaa series set to 1, got %v", got)
+	}
+
+	metrics.RecordConfigVersion("hash-bbb")
+	if got := testutil.ToFloat64(metrics.ConfigVersionInfo.WithLabelValues("hash-bbb")); got != 1 {
+		t.Errorf("expected hash-bbb series set to 1, got %v", got)
+	}
+	count := testutil.CollectAndCount(metrics.ConfigVersionInfo)
+	if count != 1 {
+		t.Errorf("expected exactly one active series after switching hashes, got %d", count)
+	}
+}

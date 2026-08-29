@@ -1,0 +1,13 @@
+{{- if .Values.redis.sentinel.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-redis-sentinel-config
+data:
+  sentinel.conf: |
+    port {{ .Values.redis.sentinel.port }}
+    sentinel monitor {{ .Values.redis.sentinel.masterName }} {{ .Release.Name }}-redis-0.{{ .Release.Name }}-redis-headless {{ .Values.redis.port }} {{ .Values.redis.sentinel.quorum }}
+    sentinel down-after-milliseconds {{ .Values.redis.sentinel.masterName }} 5000
+    sentinel failover-timeout {{ .Values.redis.sentinel.masterName }} 60000
+    sentinel parallel-syncs {{ .Values.redis.sentinel.masterName }} 1
+{{- end }}
