@@ -2,11 +2,15 @@ package metrics_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"testing"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -90,5 +94,55 @@ func TestUnaryServerInterceptor_StripsServicePrefixFromMethod(t *testing.T) {
 
 	if after != before+1 {
 		t.Error("expected the method label to be the bare RPC name (InterceptorProbeAlpha), not the full /service/method path")
+	}
+}
+
+func TestUnaryServerInterceptor_RecordsPlaintextWhenNoPeerTLSInfo(t *testing.T) {
+	interceptor := metrics.UnaryServerInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: "/ratecap.v1.RatecapService/InterceptorProbeGamma"}
+	handler := func(ctx context.Context, req any) (any, error) { return nil, nil }
+
+	before := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("plaintext", "n/a"))
+	_, _ = interceptor(context.Background(), "request", info, handler)
+	after := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("plaintext", "n/a"))
+
+	if after != before+1 {
+		t.Errorf("expected ConnectionSecurityTotal{transport=plaintext,client_cert=n/a} to increment when ctx has no peer info, before=%v after=%v", before, after)
+	}
+}
+
+func TestUnaryServerInterceptor_RecordsTLSWithClientCertAbsent(t *testing.T) {
+	interceptor := metrics.UnaryServerInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: "/ratecap.v1.RatecapService/InterceptorProbeGamma"}
+	handler := func(ctx context.Context, req any) (any, error) { return nil, nil }
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{
+		AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{PeerCertificates: nil}},
+	})
+
+	before := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("tls", "absent"))
+	_, _ = interceptor(ctx, "request", info, handler)
+	after := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("tls", "absent"))
+
+	if after != before+1 {
+		t.Errorf("expected ConnectionSecurityTotal{transport=tls,client_cert=absent} to increment for a TLS peer with no client cert, before=%v after=%v", before, after)
+	}
+}
+
+func TestUnaryServerInterceptor_RecordsTLSWithClientCertPresent(t *testing.T) {
+	interceptor := metrics.UnaryServerInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: "/ratecap.v1.RatecapService/InterceptorProbeGamma"}
+	handler := func(ctx context.Context, req any) (any, error) { return nil, nil }
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{
+		AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{PeerCertificates: []*x509.Certificate{{}}}},
+	})
+
+	before := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("tls", "present"))
+	_, _ = interceptor(ctx, "request", info, handler)
+	after := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("tls", "present"))
+
+	if after != before+1 {
+		t.Errorf("expected ConnectionSecurityTotal{transport=tls,client_cert=present} to increment for a TLS peer WITH a client cert, before=%v after=%v", before, after)
 	}
 }

@@ -84,3 +84,13 @@ func TestRecordConfigVersion_ClearsPreviousHashSeries(t *testing.T) {
 		t.Errorf("expected exactly one active series after switching hashes, got %d", count)
 	}
 }
+
+func TestRecordConnectionSecurity_IncrementsByTransportAndClientCert(t *testing.T) {
+	before := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("tls", "present"))
+	metrics.RecordConnectionSecurity("tls", "present")
+	after := testutil.ToFloat64(metrics.ConnectionSecurityTotal.WithLabelValues("tls", "present"))
+
+	if after != before+1 {
+		t.Errorf("expected ConnectionSecurityTotal{transport=tls,client_cert=present} to increment by 1, before=%v after=%v", before, after)
+	}
+}
