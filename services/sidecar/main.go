@@ -70,6 +70,22 @@ func resolveMaxInflight(envVal string, defaultVal int64) int64 {
 	return parsed
 }
 
+func resolveRampStartPct(envVal string, defaultVal int) int {
+	if envVal == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.Atoi(envVal)
+	if err != nil {
+		log.Printf("RATECAP_SHED_RAMP_START_PCT=%q is not a valid integer, using default of %d: %v", envVal, defaultVal, err)
+		return defaultVal
+	}
+	if parsed <= 0 || parsed > 100 {
+		log.Printf("RATECAP_SHED_RAMP_START_PCT=%q must be in (0, 100], using default of %d", envVal, defaultVal)
+		return defaultVal
+	}
+	return parsed
+}
+
 func resolveMaxRPS(envVal string, defaultVal float64) float64 {
 	if envVal == "" {
 		return defaultVal
@@ -127,7 +143,8 @@ func main() {
 	client := ratecapv1.NewRatecapServiceClient(conn)
 
 	maxInflight := resolveMaxInflight(os.Getenv("RATECAP_MAX_INFLIGHT_REQUESTS"), 500)
-	shedder := worker.NewShedder(maxInflight)
+	rampStartPct := resolveRampStartPct(os.Getenv("RATECAP_SHED_RAMP_START_PCT"), 100)
+	shedder := worker.NewShedderWithRamp(maxInflight, rampStartPct)
 
 	protectedMux := http.NewServeMux()
 	protectedMux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))

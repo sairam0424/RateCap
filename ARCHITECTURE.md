@@ -129,3 +129,7 @@ When a tier's backing Redis call errors (timeout, connection refused, or any oth
 ### Known limitations
 
 - No distributed tracing exists yet. OpenTelemetry trace-context propagation across the sidecar→core gRPC hop is scoped for a future phase (see `docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md`, Phase 1 item 9 / Phase 5).
+
+### Tier 4 shed-curve ramping
+
+`worker.Shedder` ramps gradually rather than cutting off hard at its cap: below `RATECAP_SHED_RAMP_START_PCT` (default 100 — i.e. no ramp, matching pre-v2.6.0 behavior) of `RATECAP_MAX_INFLIGHT_REQUESTS`, every request is admitted; within the ramp window, rejection probability increases linearly to 100% exactly at the cap. This avoids the binary-on/off flapping failure mode Stripe's own load shedders are documented to have hit.

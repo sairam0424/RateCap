@@ -44,6 +44,41 @@ func TestResolveMaxInflight_NegativeReturnsDefault(t *testing.T) {
 	}
 }
 
+func TestResolveRampStartPct_EmptyStringReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for empty string, got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_ValidValueIsUsed(t *testing.T) {
+	got := resolveRampStartPct("80", 100)
+	if got != 80 {
+		t.Errorf("expected 80, got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_UnparseableStringReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("not-a-number", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for an unparseable value, got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_ZeroReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("0", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for a zero value (out of range), got %d", got)
+	}
+}
+
+func TestResolveRampStartPct_AboveOneHundredReturnsDefault(t *testing.T) {
+	got := resolveRampStartPct("150", 100)
+	if got != 100 {
+		t.Errorf("expected 100 for a value above 100, got %d", got)
+	}
+}
+
 func TestResolveMaxRPS_EmptyStringReturnsDefault(t *testing.T) {
 	got := resolveMaxRPS("", 1000)
 	if got != 1000 {

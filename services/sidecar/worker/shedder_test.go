@@ -233,3 +233,78 @@ func TestShedder_BoundaryAtMaxMinusOneAndMax(t *testing.T) {
 		t.Fatalf("expected Allow() to succeed again after Release() brought current back to max-1")
 	}
 }
+
+func TestShedder_BelowRampStart_AlwaysAllows(t *testing.T) {
+	s := worker.NewShedderWithRamp(100, 80) // ramp starts at 80% of max
+	for i := 0; i < 79; i++ {
+		if !s.Allow() {
+			t.Fatalf("expected allow #%d (below ramp-start threshold of 80), but was rejected", i)
+		}
+	}
+}
+
+func TestShedder_AtMax_NeverAllows(t *testing.T) {
+	s := worker.NewShedderWithRamp(10, 50)
+	// A reject inside the ramp window (current in [5,10)) is a probabilistic
+	// admission-control decision, not a slot consumption — retrying until a
+	// slot actually fills is safe and deterministic; it's the boundary at
+	// max (checked below) that must be unconditional regardless of ramp.
+	for i := 0; i < 10; i++ {
+		filled := false
+		for attempt := 0; attempt < 10000; attempt++ {
+			if s.Allow() {
+				filled = true
+				break
+			}
+		}
+		if !filled {
+			t.Fatalf("slot #%d never filled after many retries despite ramp being probabilistic (not a hard reject) below max", i)
+		}
+	}
+	if s.Allow() {
+		t.Error("expected reject once inflight has reached max, regardless of ramp")
+	}
+}
+
+func TestShedder_WithinRampWindow_ProbabilityDecreasesTowardMax(t *testing.T) {
+	const max = 1000
+	const rampStartPct = 50 // ramp window is [500, 1000)
+	const trials = 20000
+
+	rejectedEarlyInWindow := 0
+	rejectedLateInWindow := 0
+	for i := 0; i < trials; i++ {
+		s := worker.NewShedderWithRamp(max, rampStartPct)
+		for j := 0; j < 520; j++ {
+			s.Allow()
+		}
+		if !s.Allow() {
+			rejectedEarlyInWindow++
+		}
+	}
+	for i := 0; i < trials; i++ {
+		s := worker.NewShedderWithRamp(max, rampStartPct)
+		for j := 0; j < 980; j++ {
+			s.Allow()
+		}
+		if !s.Allow() {
+			rejectedLateInWindow++
+		}
+	}
+
+	if rejectedLateInWindow <= rejectedEarlyInWindow {
+		t.Errorf("expected rejection rate to increase closer to max: early-window rejects=%d, late-window rejects=%d out of %d trials each", rejectedEarlyInWindow, rejectedLateInWindow, trials)
+	}
+}
+
+func TestShedder_LegacyConstructor_BehavesAsHardCutoff(t *testing.T) {
+	s := worker.NewShedder(5)
+	for i := 0; i < 5; i++ {
+		if !s.Allow() {
+			t.Fatalf("expected allow #%d filling to max via legacy NewShedder", i)
+		}
+	}
+	if s.Allow() {
+		t.Error("expected NewShedder (no ramp param) to behave as a hard cutoff at max, matching pre-existing behavior")
+	}
+}
