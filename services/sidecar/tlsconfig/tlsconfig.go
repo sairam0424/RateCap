@@ -23,24 +23,28 @@ func EnvVarsPartiallySet(cert, key, ca string) bool {
 
 // Load builds a client-side, mutual-TLS *tls.Config: it presents this
 // service's own client certificate (so the server can authenticate it)
-// and verifies the server's certificate against the given CA.
-func Load(certPath, keyPath, caPath string) (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+// and verifies the server's certificate against the given CA. The
+// returned stop func ends the cert/key hot-reload watcher; the CA pool
+// itself is loaded once and is not hot-reloaded.
+func Load(certPath, keyPath, caPath string) (*tls.Config, func(), error) {
+	reloadable, stop, err := watchCert(certPath, keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("loading client cert/key: %w", err)
+		return nil, nil, fmt.Errorf("loading client cert/key: %w", err)
 	}
 
 	caData, err := os.ReadFile(caPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading CA cert: %w", err)
+		stop()
+		return nil, nil, fmt.Errorf("reading CA cert: %w", err)
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caData) {
-		return nil, fmt.Errorf("no valid certificates found in CA file %s", caPath)
+		stop()
+		return nil, nil, fmt.Errorf("no valid certificates found in CA file %s", caPath)
 	}
 
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      pool,
-	}, nil
+		GetClientCertificate: reloadable.GetClientCertificate,
+		RootCAs:              pool,
+	}, stop, nil
 }

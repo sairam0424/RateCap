@@ -11,6 +11,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
 - One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
 
+## [2.7.0] — 2026-08-29 — Phase 3 Security: mTLS PERMISSIVE Mode
+
+Minor release: Phase 3 of the v3 upgrade roadmap — adds the migration rung between "off" and "all-or-nothing strict" mTLS that every mature service mesh ships. No shipped default changes.
+
+### Added
+
+- `RATECAP_TLS_MODE=off|permissive|strict` on `services/core`. `off` (default, unset) preserves exact pre-v2.7.0 behavior. `permissive` adds a second, additive TLS listener (`RATECAP_GRPC_TLS_ADDR`, default `:9443`) accepting connections with or without a client cert, alongside the unchanged plaintext listener — letting sidecars migrate one at a time. `strict` is the existing all-TLS behavior, now reachable via an explicit mode string.
+- `ratecap_core_connection_security_total{transport,client_cert}` — the "is anything still on plaintext" signal a `strict` cutover needs before it's safe.
+- `ratecapctl tls check <cert-path> <expected-host>` — a SAN/hostname preflight check catching the exact failure mode the Helm chart's `values.yaml` already documents as producing no server-side log.
+- Certificate hot-reload via `fsnotify` on both `services/core` (server cert) and `services/sidecar` (client cert) — an externally-rotated cert now takes effect without a pod restart. The CA pool is not hot-reloaded.
+- An opt-in Helm `NetworkPolicy` (`networkPolicy.enabled`, default `false`) restricting core's gRPC/health ports to the sidecar's pod selector and Redis's (and, if enabled, Sentinel's) port to core's selector.
+
+### Security
+
+- `RATECAP_TLS_MODE=permissive` is a deliberate, scoped transitional weakening (`ClientAuth: VerifyClientCertIfGiven` on the new listener only) — see `SECURITY.md`'s new mTLS migration mode section for the intended usage and the signal that says it's safe to move to `strict`.
+
 ## [2.6.0] — 2026-08-28 — Phase 2 Reliability & Testing Hardening
 
 Minor release: Phase 2 of the v3 upgrade roadmap — RateCap's core architectural claims (fail-open/fail-closed, atomicity, no-flapping) are now tested invariants instead of assumptions, Redis can run HA via Sentinel, and on-call has a sub-second incident-response lever.

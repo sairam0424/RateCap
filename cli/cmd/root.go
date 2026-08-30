@@ -12,6 +12,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newBenchCmd())
 	root.AddCommand(newAdminCmd())
+	root.AddCommand(newTLSCmd())
 	return root
 }
 

@@ -76,6 +76,15 @@
       "targets": [
         { "expr": "sum by (endpoint) (rate(ratecap_upstream_errors_total[1m]))", "legendFormat": "{{endpoint}}" }
       ]
+    },
+    {
+      "id": 9,
+      "title": "Plaintext vs TLS connections (core)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        { "expr": "sum by (transport, client_cert) (rate(ratecap_core_connection_security_total[1m]))", "legendFormat": "{{transport}} / {{client_cert}}" }
+      ]
     }
   ]
 }
