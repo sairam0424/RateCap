@@ -47,6 +47,11 @@ var ConfigVersionInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Help: "Info metric (always 1) whose hash label is the currently-active config's content hash — compare this label across replicas to detect hot-reload divergence.",
 }, []string{"hash"})
 
+var ConnectionSecurityTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ratecap_core_connection_security_total",
+	Help: "Total gRPC calls by transport (plaintext or tls) and whether a client certificate was presented (present, absent, or n/a for plaintext) — the 'is anything still on plaintext' signal a default flip needs before it's safe.",
+}, []string{"transport", "client_cert"})
+
 var currentConfigHash string
 
 func RecordGRPCRequest(method, code string, duration time.Duration) {
@@ -79,6 +84,10 @@ func RecordConfigVersion(hash string) {
 	}
 	currentConfigHash = hash
 	ConfigVersionInfo.WithLabelValues(hash).Set(1)
+}
+
+func RecordConnectionSecurity(transport, clientCert string) {
+	ConnectionSecurityTotal.WithLabelValues(transport, clientCert).Inc()
 }
 
 func Handler() http.Handler {
