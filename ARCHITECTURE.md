@@ -135,3 +135,31 @@ Enforced by real network-fault-injection tests (Toxiproxy, not mocks) in `servic
 ### Tier 4 shed-curve ramping
 
 `worker.Shedder` ramps gradually rather than cutting off hard at its cap: below `RATECAP_SHED_RAMP_START_PCT` (default 100 — i.e. no ramp, matching pre-v2.6.0 behavior) of `RATECAP_MAX_INFLIGHT_REQUESTS`, every request is admitted; within the ramp window, rejection probability increases linearly to 100% exactly at the cap. This avoids the binary-on/off flapping failure mode Stripe's own load shedders are documented to have hit.
+
+## mTLS migration path (v2.7.0)
+
+Flipping mTLS from off to fully enforced in one step is a flag day — any sidecar without a cert yet goes down the instant the switch flips. `RATECAP_TLS_MODE` adds the middle rung every mature service mesh (Istio, Linkerd) ships for exactly this reason:
+
+| `RATECAP_TLS_MODE` | `services/core` behavior |
+| --- | --- |
+| unset / `off` (default) | Unchanged from pre-v2.7.0: plaintext-only on `:9090`, unless `RATECAP_TLS_CERT_PATH`/`KEY_PATH`/`CA_PATH` happen to be set, in which case the single listener becomes TLS-only (`RequireAndVerifyClientCert`) — this is the same implicit behavior that existed before this env var did. |
+| `permissive` | The plaintext listener on `:9090` keeps running unchanged. A **second** listener (`RATECAP_GRPC_TLS_ADDR`, default `:9443`) is added, with `ClientAuth: VerifyClientCertIfGiven` — a sidecar without a cert can still connect (server-authenticated only); a sidecar with a cert gets it verified. Sidecars migrate one at a time by pointing `RATECAP_CORE_ADDR` at the TLS port once they have certs. |
+| `strict` | Same as the implicit "certs set" behavior above, now reachable via an explicit, self-documenting mode string: single listener, TLS-only, `RequireAndVerifyClientCert`. |
+
+Both `permissive` and `strict` require the TLS cert env vars to be set — core fails closed at startup otherwise.
+
+**Recommended rollout sequence** (mirrors Istio's/Linkerd's own documented migration path — do not skip a step):
+1. Ship with `off` as the default (this release does — no shipped default changes).
+2. Once every sidecar in a fleet is capable of connecting with a cert, an operator sets `RATECAP_TLS_MODE=permissive` on core and migrates sidecars one at a time.
+3. Watch `ratecap_core_connection_security_total{transport="plaintext"}` (see the Observability section) drop to zero across a full deploy cycle — this is the "is anything still on plaintext" signal a strict cutover needs before it's safe.
+4. Only once that metric is confirmed zero does an operator flip to `RATECAP_TLS_MODE=strict`.
+
+RateCap does not flip any of this automatically or by default — every transition above is an explicit operator action.
+
+### Certificate SAN/hostname preflight
+
+`ratecapctl tls check <cert-path> <expected-host>` verifies a certificate's SAN list covers the hostname it will actually serve/dial *before* deploying it — catching the exact "demo certs' SAN (core/sidecar) don't match a real Helm release name" failure mode `deploy/helm/ratecap/values.yaml` already documents as producing no server-side log.
+
+### Certificate hot-reload
+
+Both services now watch their cert/key files via the same `fsnotify` library already used for `ratecap.yaml`'s config hot-reload, and swap in the reloaded certificate without a restart — an externally-rotated cert (e.g. cert-manager) takes effect automatically. The CA pool is loaded once at startup and is NOT hot-reloaded; CA rotation still requires a restart.

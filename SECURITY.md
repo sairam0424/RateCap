@@ -62,6 +62,10 @@ v2.3.2 fixes both halves:
 
 **Residual limitation, by design:** this signature proves a token was genuinely issued by this `ratecap-core` instance — it does not bind the token to the specific caller who acquired it. Any authenticated sidecar client (auth is service-to-service via the shared secret, not per-end-user) that somehow obtains a valid signed token can still release it, the same way any authenticated caller could before this fix. This matches RateCap's existing shared-secret trust model (see Network Transport Security above) rather than introducing a new one; true per-caller ownership binding would require a caller-identity concept RateCap does not have, and is out of scope for this fix.
 
+## mTLS migration mode
+
+`RATECAP_TLS_MODE=permissive` on `services/core` intentionally accepts connections from clients *without* a certificate (`ClientAuth: VerifyClientCertIfGiven`) on its TLS listener, alongside the still-running plaintext listener — this is a deliberate transitional weakening of the all-or-nothing mTLS posture, scoped to migration only. Do not leave a fleet running in `permissive` mode indefinitely; the whole point is to reach `strict` once `ratecap_core_connection_security_total{transport="plaintext"}` confirms zero remaining plaintext traffic. The shared-secret (`RATECAP_SHARED_SECRET`) gRPC interceptor remains active and enforced on both listeners throughout every mode — mTLS is a second, independent layer, not a replacement for it.
+
 ## Admin lever (`/admin/set-limit`)
 
 A sub-second incident-response endpoint for changing Tier 1's rate or Tier 3's `reserved_critical_pct` fleet-wide without a config re-parse. Gated by its own secret, `RATECAP_ADMIN_SECRET`, checked at the sidecar's HTTP layer via the `X-RateCap-Admin-Secret` header — deliberately separate from `RATECAP_SHARED_SECRET`, since this capability has fleet-wide, effectively unbounded blast radius (unlike `/check`, which is self-bounding). A leaked admin secret lets an attacker disable rate limiting or fleet load-shedding fleet-wide in one call; rotate it independently of the general shared secret if either is suspected of leaking.
