@@ -106,3 +106,14 @@ tls:
     existingSecretName: ""
   sidecar:
     existingSecretName: ""
+
+# networkPolicy is off by default, matching this chart's tls/sentinel
+# opt-in convention. When enabled, it operationalizes the network-boundary
+# claim SECURITY.md already makes ("must run on private, trusted network
+# only") at the Kubernetes level — restricting which pods can reach core's
+# gRPC/health ports and Redis's port, rather than leaving that entirely to
+# operator-managed cluster-wide policy. Requires a CNI that enforces
+# NetworkPolicy (Calico, Cilium, etc.) — on a CNI that doesn't, this
+# resource is created but has no effect (fails open, not closed).
+networkPolicy:
+  enabled: false
