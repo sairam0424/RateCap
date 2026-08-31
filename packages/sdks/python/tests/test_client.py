@@ -6,7 +6,9 @@ import unittest
 # dir, so tests/__init__.py is never imported as a package init and can't put
 # src/ on sys.path for us — this module is the only thing that runs before
 # `from ratecap import Client` below, so the bootstrap has to live here.
-_SRC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+_SRC_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"
+)
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
@@ -54,7 +56,10 @@ class TestAcquire(unittest.TestCase):
     def test_acquire_returns_allowed_true_on_200(self):
         def handler(method, path, query, headers):
             if path == "/check":
-                return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
+                return 200, {
+                    "Concurrency-Token-0": "tok-abc",
+                    "Concurrency-Key-0": "user-1",
+                }
             return 200, {}
 
         with FakeSidecar(handler) as sidecar:
@@ -89,7 +94,10 @@ class TestAcquire(unittest.TestCase):
                 }
             if path == "/release":
                 release_calls.append(
-                    {"key": headers.get("X-Ratecap-Concurrency-Key"), "token": headers.get("X-Ratecap-Concurrency-Token")}
+                    {
+                        "key": headers.get("X-Ratecap-Concurrency-Key"),
+                        "token": headers.get("X-Ratecap-Concurrency-Token"),
+                    }
                 )
                 return 200, {}
             return 404, {}
@@ -109,9 +117,18 @@ class TestAcquire(unittest.TestCase):
 
         def handler(method, path, query, headers):
             if path == "/check":
-                return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
+                return 200, {
+                    "Concurrency-Token-0": "tok-abc",
+                    "Concurrency-Key-0": "user-1",
+                }
             if path == "/release":
-                release_calls.append({"query": dict(query), "header_key": headers.get("X-Ratecap-Concurrency-Key"), "header_token": headers.get("X-Ratecap-Concurrency-Token")})
+                release_calls.append(
+                    {
+                        "query": dict(query),
+                        "header_key": headers.get("X-Ratecap-Concurrency-Key"),
+                        "header_token": headers.get("X-Ratecap-Concurrency-Token"),
+                    }
+                )
                 return 200, {}
             return 404, {}
 
@@ -121,7 +138,11 @@ class TestAcquire(unittest.TestCase):
             ticket.release()
 
         self.assertEqual(len(release_calls), 1)
-        self.assertEqual(release_calls[0]["query"], {}, "expected /release to send nothing via the query string")
+        self.assertEqual(
+            release_calls[0]["query"],
+            {},
+            "expected /release to send nothing via the query string",
+        )
         self.assertEqual(release_calls[0]["header_key"], "user-1")
         self.assertEqual(release_calls[0]["header_token"], "tok-abc")
 
@@ -144,7 +165,10 @@ class TestAcquire(unittest.TestCase):
     def test_release_raises_when_a_reservation_fails_to_release(self):
         def handler(method, path, query, headers):
             if path == "/check":
-                return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
+                return 200, {
+                    "Concurrency-Token-0": "tok-abc",
+                    "Concurrency-Key-0": "user-1",
+                }
             if path == "/release":
                 return 500, {}
             return 404, {}
@@ -160,7 +184,10 @@ class TestAcquire(unittest.TestCase):
 
         def handler(method, path, query, headers):
             if path == "/check":
-                return 200, {"Concurrency-Token-0": "tok-abc", "Concurrency-Key-0": "user-1"}
+                return 200, {
+                    "Concurrency-Token-0": "tok-abc",
+                    "Concurrency-Key-0": "user-1",
+                }
             if path == "/release":
                 release_calls.append(dict(query))
                 return 200, {}
@@ -172,6 +199,101 @@ class TestAcquire(unittest.TestCase):
                 self.assertTrue(ticket.allowed)
 
         self.assertEqual(len(release_calls), 1)
+
+
+class TestCostAndPriority(unittest.TestCase):
+    def test_allow_sends_cost_query_param_when_given(self):
+        captured = {}
+
+        def handler(method, path, query, headers):
+            captured.update(query)
+            return 200, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            client.allow("user-1", cost=5)
+            self.assertEqual(captured.get("cost"), "5")
+
+    def test_allow_omits_cost_query_param_by_default(self):
+        captured = {}
+
+        def handler(method, path, query, headers):
+            captured.update(query)
+            return 200, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            client.allow("user-1")
+            self.assertNotIn("cost", captured)
+
+    def test_allow_sends_priority_header_when_given(self):
+        captured = {}
+
+        def handler(method, path, query, headers):
+            captured.update(headers)
+            return 200, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            client.allow("user-1", priority="critical")
+            # Python's http.server.HTTPServer normalizes header names via
+            # urllib's AbstractHTTPHandler.do_open (str.title() at every
+            # hyphen boundary) regardless of the casing passed to Request(),
+            # matching this file's own established convention of asserting
+            # "X-Ratecap-Concurrency-Key" rather than "X-RateCap-...".
+            self.assertEqual(captured.get("X-Ratecap-Priority"), "critical")
+
+    def test_acquire_sends_cost_and_priority(self):
+        captured_query = {}
+        captured_headers = {}
+
+        def handler(method, path, query, headers):
+            if path == "/check":
+                captured_query.update(query)
+                captured_headers.update(headers)
+            return 200, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            client.acquire("user-1", cost=1500, priority="critical")
+            self.assertEqual(captured_query.get("cost"), "1500")
+            self.assertEqual(captured_headers.get("X-Ratecap-Priority"), "critical")
+
+
+class TestRefund(unittest.TestCase):
+    def test_refund_sends_refund_headers(self):
+        refund_calls = []
+
+        def handler(method, path, query, headers):
+            if path == "/check":
+                return 200, {}
+            if path == "/release":
+                refund_calls.append(dict(headers))
+                return 200, {}
+            return 404, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            ticket = client.acquire("user-1", cost=1500)
+            ticket.refund(1200)
+
+        self.assertEqual(len(refund_calls), 1)
+        self.assertEqual(refund_calls[0].get("X-Ratecap-Refund-Key"), "user-1")
+        self.assertEqual(refund_calls[0].get("X-Ratecap-Refund-Amount"), "1200")
+
+    def test_refund_raises_on_non_200(self):
+        def handler(method, path, query, headers):
+            if path == "/check":
+                return 200, {}
+            if path == "/release":
+                return 500, {}
+            return 404, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            ticket = client.acquire("user-1", cost=1500)
+            with self.assertRaises(RuntimeError):
+                ticket.refund(1200)
 
 
 if __name__ == "__main__":
