@@ -14,6 +14,7 @@ import (
 
 	"github.com/ratecap/sidecar/decisionlog"
 	"github.com/ratecap/sidecar/metrics"
+	"github.com/ratecap/sidecar/negativecache"
 	"github.com/ratecap/sidecar/shadow"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -22,14 +23,37 @@ type ratecapClient interface {
 	CheckRateLimit(ctx context.Context, in *ratecapv1.CheckRateLimitRequest, opts ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error)
 }
 
+func resolveCost(raw string) int {
+	if raw == "" {
+		return 1
+	}
+	// ParseInt with bitSize=32 (not Atoi) so an out-of-int32-range value is
+	// rejected here, not silently wrapped to a negative Cost by the int32()
+	// cast at the call site.
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed <= 0 {
+		log.Printf("sidecar: /check: cost=%q is invalid, defaulting to 1", raw)
+		return 1
+	}
+	return int(parsed)
+}
+
 type Handler struct {
 	client          ratecapClient
 	defaultPriority Priority
 	shedder         *worker.Shedder
+	negativeCache   *negativecache.Cache
 }
 
 func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder) *Handler {
 	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder}
+}
+
+// NewHandlerWithCache is NewHandler plus an explicit negative cache — kept
+// as a separate constructor (rather than a parameter on NewHandler) so
+// every existing call site of NewHandler keeps compiling unchanged.
+func NewHandlerWithCache(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder, cache *negativecache.Cache) *Handler {
+	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder, negativeCache: cache}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -40,19 +64,43 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		http.Error(w, "missing key parameter", http.StatusBadRequest)
+		return
+	}
+
 	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
 	protoPriority := ratecapv1.Priority_SHEDDABLE
 	if priority == Critical {
 		protoPriority = ratecapv1.Priority_CRITICAL
 	}
 
+	// A cache-short-circuited denial must look identical, on the wire and in
+	// observability, to the real REJECT_429 it's standing in for — it's the
+	// same decision, just served from local memory instead of a fresh core
+	// round trip. Priority resolution moved above this block (from its
+	// original position further down) so decisionlog has a real label here
+	// instead of a duplicate ResolvePriority call.
+	if h.negativeCache != nil {
+		if denied, remaining := h.negativeCache.IsDenied(key); denied {
+			metrics.RecordDecision("negative_cache", "reject_429")
+			decisionlog.Log("negative_cache", key, "reject_429", priorityLabel(priority), time.Since(start))
+			metrics.RecordDecisionLatency("negative_cache", time.Since(start))
+			remainingMs := remaining.Milliseconds()
+			w.Header().Set("Retry-After-Ms", strconv.FormatInt(remainingMs, 10))
+			w.Header().Set("RateLimit-Reset", strconv.FormatInt((remainingMs+999)/1000, 10))
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	if priority != Critical {
 		if !h.shedder.Allow() {
-			shedKey := r.URL.Query().Get("key")
 			if !shadow.GlobalOverrideEnabled() {
 				metrics.RecordDecision("worker_shedder", "reject_503")
 				metrics.SetWorkerInFlight(h.shedder.InFlight())
-				decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+				decisionlog.Log("worker_shedder", key, "reject_503", priorityLabel(priority), time.Since(start))
 				metrics.RecordDecisionLatency("worker_shedder", time.Since(start))
 				w.Header().Set("X-RateCap-Shed-Tier", "4")
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -61,7 +109,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.RecordDecision("worker_shedder", "reject_503")
 			metrics.RecordShadowWouldReject("worker_shedder")
 			metrics.SetWorkerInFlight(h.shedder.InFlight())
-			decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+			decisionlog.Log("worker_shedder", key, "reject_503", priorityLabel(priority), time.Since(start))
 			metrics.RecordDecisionLatency("worker_shedder", time.Since(start))
 			log.Printf("worker shedder: would have shed request, shadow mode active")
 		} else {
@@ -73,17 +121,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		http.Error(w, "missing key parameter", http.StatusBadRequest)
-		return
-	}
-
 	skipReservations := r.URL.Query().Get("skip_reservations") == "true"
 
 	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{
 		Key:              key,
-		Cost:             1,
+		Cost:             int32(resolveCost(r.URL.Query().Get("cost"))),
 		SkipReservations: skipReservations,
 		Priority:         protoPriority,
 	})
@@ -112,11 +154,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		metrics.RecordShadowWouldReject(resp.Tier)
 	}
 
+	// Scoped to REJECT_429 specifically, not REJECT_503: a 503 fleet/worker
+	// shed is a capacity signal that can flip to ALLOW moments later once
+	// load drops, whereas a 429 has a caller-specific RetryAfterMs that's
+	// the exact right cache window — caching a 503 risks needlessly
+	// extending an outage's blast radius past when capacity actually
+	// recovered.
+	if h.negativeCache != nil && realAction == ratecapv1.Action_REJECT_429 {
+		h.negativeCache.MarkDenied(key, time.Duration(resp.RetryAfterMs)*time.Millisecond)
+	}
+
 	switch action {
 	case ratecapv1.Action_ALLOW, ratecapv1.Action_SHADOW_LOG, ratecapv1.Action_QUEUE:
 		w.WriteHeader(http.StatusOK)
 	case ratecapv1.Action_REJECT_429:
 		w.Header().Set("Retry-After-Ms", strconv.FormatInt(resp.RetryAfterMs, 10))
+		// (ms + 999) / 1000 is integer ceiling division — the IETF draft's
+		// reset field is in whole seconds, and rounding down would tell a
+		// caller it's safe to retry slightly before it actually is.
+		w.Header().Set("RateLimit-Reset", strconv.FormatInt((resp.RetryAfterMs+999)/1000, 10))
 		w.WriteHeader(http.StatusTooManyRequests)
 	case ratecapv1.Action_REJECT_503:
 		w.Header().Set("X-RateCap-Shed-Tier", "3")
@@ -150,6 +206,7 @@ func priorityLabel(p Priority) string {
 
 type releaseClient interface {
 	ReleaseConcurrency(ctx context.Context, in *ratecapv1.ReleaseConcurrencyRequest, opts ...grpc.CallOption) (*ratecapv1.ReleaseConcurrencyResponse, error)
+	RefundCost(ctx context.Context, in *ratecapv1.RefundCostRequest, opts ...grpc.CallOption) (*ratecapv1.RefundCostResponse, error)
 }
 
 type ReleaseHandler struct {
@@ -166,22 +223,43 @@ func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := r.Header.Get("X-RateCap-Concurrency-Key")
-	if key == "" {
+	concurrencyKey := r.Header.Get("X-RateCap-Concurrency-Key")
+	refundKey := r.Header.Get("X-RateCap-Refund-Key")
+	if concurrencyKey == "" && refundKey == "" {
 		http.Error(w, "missing key parameter", http.StatusBadRequest)
 		return
 	}
-	token := r.Header.Get("X-RateCap-Concurrency-Token")
 
-	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
-	if err != nil {
-		log.Printf("sidecar: /release: upstream call failed: %v", err)
-		metrics.RecordUpstreamError("release_concurrency")
-		metrics.RecordReleaseResult("failure")
-		http.Error(w, "upstream release failed", http.StatusInternalServerError)
-		return
+	if concurrencyKey != "" {
+		token := r.Header.Get("X-RateCap-Concurrency-Token")
+		_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: concurrencyKey, ConcurrencyToken: token})
+		if err != nil {
+			log.Printf("sidecar: /release: upstream release failed: %v", err)
+			metrics.RecordUpstreamError("release_concurrency")
+			metrics.RecordReleaseResult("failure")
+			http.Error(w, "upstream release failed", http.StatusInternalServerError)
+			return
+		}
+		metrics.RecordReleaseResult("success")
 	}
 
-	metrics.RecordReleaseResult("success")
+	if refundKey != "" {
+		// ParseInt with bitSize=32 (not Atoi), matching resolveCost above —
+		// rejects an out-of-int32-range value here rather than silently
+		// wrapping it to a negative RefundAmount via the int32() cast below.
+		refundAmount, err := strconv.ParseInt(r.Header.Get("X-RateCap-Refund-Amount"), 10, 32)
+		if err != nil || refundAmount <= 0 {
+			http.Error(w, "invalid or missing X-RateCap-Refund-Amount", http.StatusBadRequest)
+			return
+		}
+		_, err = h.client.RefundCost(r.Context(), &ratecapv1.RefundCostRequest{Key: refundKey, RefundAmount: int32(refundAmount)})
+		if err != nil {
+			log.Printf("sidecar: /release: upstream refund failed: %v", err)
+			metrics.RecordUpstreamError("refund_cost")
+			http.Error(w, "upstream refund failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 }

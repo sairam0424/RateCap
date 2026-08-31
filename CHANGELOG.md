@@ -11,6 +11,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
 - One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
 
+## [2.8.0] — 2026-08-31 — Phase 4 SDK & API: Token-Cost Wiring
+
+Minor release: Phase 4 of the v3 upgrade roadmap — finishes an already-designed feature. RateCap's Tier 1 substrate was already a generic variable-cost token bucket end-to-end; only the sidecar's hardcoded `Cost: 1` stood in the way.
+
+### Added
+
+- `/check?cost=N` — wires the existing cost plumbing through, default `1` (unchanged for existing callers).
+- `EstimateLLMCost`/`estimate_llm_cost` helpers on both SDKs, mirroring the AWS Bedrock/LiteLLM token-cost estimate.
+- A `RefundCost` gRPC RPC and a new bounded, burst-clamped Lua script, exposed via `/release`'s new `X-RateCap-Refund-Key`/`X-RateCap-Refund-Amount` headers — reserve a cost estimate upfront, refund the unused portion once real usage is known.
+- Go SDK: `WithCost`/`WithPriority` options on `Allow`/`Acquire`, `Ticket.Refund`.
+- Python SDK: `cost`/`priority` parameters on `allow`/`acquire`, `Ticket.refund`, and — previously entirely missing — timeout, retry/backoff, and TLS support (`Client(..., timeout=, max_retries=, backoff_base=, ca_file=)`), all via the standard library only.
+- Shared contract tests (`services/sidecar/contracttest`) driving both SDKs against the real sidecar handler, catching wire-format drift directly instead of via independently-maintained protocol descriptions agreeing by coincidence.
+- `RateLimit-Reset` response header (IETF `draft-ietf-httpapi-ratelimit-headers`) on `429` responses — partial compliance; `limit`/`remaining` require a future proto change and are explicitly out of scope here.
+- A sidecar-local negative cache for already-denied identifiers, complementary to Tier 4's worker shedder.
+
 ## [2.7.0] — 2026-08-29 — Phase 3 Security: mTLS PERMISSIVE Mode
 
 Minor release: Phase 3 of the v3 upgrade roadmap — adds the migration rung between "off" and "all-or-nothing strict" mTLS that every mature service mesh ships. No shipped default changes.

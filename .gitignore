@@ -10,3 +10,4 @@ __pycache__/
 *.egg-info/
 scratch-pad/
 .superpowers/
+.serena/

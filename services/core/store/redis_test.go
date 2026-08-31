@@ -504,6 +504,71 @@ func TestIncrConcurrent_RecordsRedisCallMetric(t *testing.T) {
 	}
 }
 
+func TestRefundTokens_ReturnsUnusedTokensUpToBurst(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	// Reserve 10, actually use 3 -> refund 7.
+	allowed, _, err := s.CheckAndDecrement(ctx, "refund-key", 10, 10, 10)
+	if err != nil || !allowed {
+		t.Fatalf("unexpected setup failure: allowed=%v err=%v", allowed, err)
+	}
+
+	if err := s.RefundTokens(ctx, "refund-key", 10, 7); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	allowed, _, err = s.CheckAndDecrement(ctx, "refund-key", 10, 10, 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("expected the refunded 7 tokens to be available for a subsequent 7-cost check")
+	}
+}
+
+func TestRefundTokens_ClampsToBurstEvenWithLargeRefund(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	allowed, _, err := s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 1)
+	if err != nil || !allowed {
+		t.Fatalf("unexpected setup failure: allowed=%v err=%v", allowed, err)
+	}
+
+	if err := s.RefundTokens(ctx, "refund-clamp-key", 10, 1000); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	allowed, _, err = s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("expected exactly burst=10 tokens to be available (not 1000+), i.e. the refund clamped")
+	}
+
+	allowed, _, err = s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allowed {
+		t.Error("expected the bucket to be fully drained after consuming exactly burst tokens — the earlier large refund must not have exceeded burst")
+	}
+}
+
+func TestRefundTokens_NoOpOnNonexistentBucket(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	if err := s.RefundTokens(ctx, "never-checked-key", 10, 5); err != nil {
+		t.Fatalf("expected a no-op (nil error) for a bucket that was never created, got: %v", err)
+	}
+}
+
 func TestDecrConcurrent_ErrorIncrementsErrorCounter(t *testing.T) {
 	client := startRedis(t)
 	s := store.NewRedisStore(client, testSigningKey)

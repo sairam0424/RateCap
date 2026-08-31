@@ -513,6 +513,94 @@ func (x *SetDynamicLimitResponse) GetNewValue() int32 {
 	return 0
 }
 
+type RefundCostRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	RefundAmount  int32                  `protobuf:"varint,2,opt,name=refund_amount,json=refundAmount,proto3" json:"refund_amount,omitempty"` // tokens to return to Tier 1's bucket for this key, clamped to burst
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefundCostRequest) Reset() {
+	*x = RefundCostRequest{}
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefundCostRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefundCostRequest) ProtoMessage() {}
+
+func (x *RefundCostRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefundCostRequest.ProtoReflect.Descriptor instead.
+func (*RefundCostRequest) Descriptor() ([]byte, []int) {
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *RefundCostRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *RefundCostRequest) GetRefundAmount() int32 {
+	if x != nil {
+		return x.RefundAmount
+	}
+	return 0
+}
+
+type RefundCostResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefundCostResponse) Reset() {
+	*x = RefundCostResponse{}
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefundCostResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefundCostResponse) ProtoMessage() {}
+
+func (x *RefundCostResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ratecap_v1_ratecap_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefundCostResponse.ProtoReflect.Descriptor instead.
+func (*RefundCostResponse) Descriptor() ([]byte, []int) {
+	return file_ratecap_v1_ratecap_proto_rawDescGZIP(), []int{8}
+}
+
 var File_ratecap_v1_ratecap_proto protoreflect.FileDescriptor
 
 const file_ratecap_v1_ratecap_proto_rawDesc = "" +
@@ -542,7 +630,11 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\x17SetDynamicLimitResponse\x12\x12\n" +
 	"\x04tier\x18\x01 \x01(\tR\x04tier\x12%\n" +
 	"\x0eprevious_value\x18\x02 \x01(\x05R\rpreviousValue\x12\x1b\n" +
-	"\tnew_value\x18\x03 \x01(\x05R\bnewValue*N\n" +
+	"\tnew_value\x18\x03 \x01(\x05R\bnewValue\"J\n" +
+	"\x11RefundCostRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12#\n" +
+	"\rrefund_amount\x18\x02 \x01(\x05R\frefundAmount\"\x14\n" +
+	"\x12RefundCostResponse*N\n" +
 	"\x06Action\x12\t\n" +
 	"\x05ALLOW\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -555,11 +647,13 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\bPriority\x12\x18\n" +
 	"\x14PRIORITY_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tSHEDDABLE\x10\x01\x12\f\n" +
-	"\bCRITICAL\x10\x022\xaa\x02\n" +
+	"\bCRITICAL\x10\x022\xf7\x02\n" +
 	"\x0eRatecapService\x12W\n" +
 	"\x0eCheckRateLimit\x12!.ratecap.v1.CheckRateLimitRequest\x1a\".ratecap.v1.CheckRateLimitResponse\x12c\n" +
 	"\x12ReleaseConcurrency\x12%.ratecap.v1.ReleaseConcurrencyRequest\x1a&.ratecap.v1.ReleaseConcurrencyResponse\x12Z\n" +
-	"\x0fSetDynamicLimit\x12\".ratecap.v1.SetDynamicLimitRequest\x1a#.ratecap.v1.SetDynamicLimitResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
+	"\x0fSetDynamicLimit\x12\".ratecap.v1.SetDynamicLimitRequest\x1a#.ratecap.v1.SetDynamicLimitResponse\x12K\n" +
+	"\n" +
+	"RefundCost\x12\x1d.ratecap.v1.RefundCostRequest\x1a\x1e.ratecap.v1.RefundCostResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
 
 var (
 	file_ratecap_v1_ratecap_proto_rawDescOnce sync.Once
@@ -574,7 +668,7 @@ func file_ratecap_v1_ratecap_proto_rawDescGZIP() []byte {
 }
 
 var file_ratecap_v1_ratecap_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_ratecap_v1_ratecap_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_ratecap_v1_ratecap_proto_goTypes = []any{
 	(Action)(0),                        // 0: ratecap.v1.Action
 	(Priority)(0),                      // 1: ratecap.v1.Priority
@@ -585,22 +679,26 @@ var file_ratecap_v1_ratecap_proto_goTypes = []any{
 	(*ReleaseConcurrencyResponse)(nil), // 6: ratecap.v1.ReleaseConcurrencyResponse
 	(*SetDynamicLimitRequest)(nil),     // 7: ratecap.v1.SetDynamicLimitRequest
 	(*SetDynamicLimitResponse)(nil),    // 8: ratecap.v1.SetDynamicLimitResponse
+	(*RefundCostRequest)(nil),          // 9: ratecap.v1.RefundCostRequest
+	(*RefundCostResponse)(nil),         // 10: ratecap.v1.RefundCostResponse
 }
 var file_ratecap_v1_ratecap_proto_depIdxs = []int32{
-	1, // 0: ratecap.v1.CheckRateLimitRequest.priority:type_name -> ratecap.v1.Priority
-	0, // 1: ratecap.v1.CheckRateLimitResponse.action:type_name -> ratecap.v1.Action
-	2, // 2: ratecap.v1.CheckRateLimitResponse.reservations:type_name -> ratecap.v1.TokenReservation
-	3, // 3: ratecap.v1.RatecapService.CheckRateLimit:input_type -> ratecap.v1.CheckRateLimitRequest
-	5, // 4: ratecap.v1.RatecapService.ReleaseConcurrency:input_type -> ratecap.v1.ReleaseConcurrencyRequest
-	7, // 5: ratecap.v1.RatecapService.SetDynamicLimit:input_type -> ratecap.v1.SetDynamicLimitRequest
-	4, // 6: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
-	6, // 7: ratecap.v1.RatecapService.ReleaseConcurrency:output_type -> ratecap.v1.ReleaseConcurrencyResponse
-	8, // 8: ratecap.v1.RatecapService.SetDynamicLimit:output_type -> ratecap.v1.SetDynamicLimitResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	1,  // 0: ratecap.v1.CheckRateLimitRequest.priority:type_name -> ratecap.v1.Priority
+	0,  // 1: ratecap.v1.CheckRateLimitResponse.action:type_name -> ratecap.v1.Action
+	2,  // 2: ratecap.v1.CheckRateLimitResponse.reservations:type_name -> ratecap.v1.TokenReservation
+	3,  // 3: ratecap.v1.RatecapService.CheckRateLimit:input_type -> ratecap.v1.CheckRateLimitRequest
+	5,  // 4: ratecap.v1.RatecapService.ReleaseConcurrency:input_type -> ratecap.v1.ReleaseConcurrencyRequest
+	7,  // 5: ratecap.v1.RatecapService.SetDynamicLimit:input_type -> ratecap.v1.SetDynamicLimitRequest
+	9,  // 6: ratecap.v1.RatecapService.RefundCost:input_type -> ratecap.v1.RefundCostRequest
+	4,  // 7: ratecap.v1.RatecapService.CheckRateLimit:output_type -> ratecap.v1.CheckRateLimitResponse
+	6,  // 8: ratecap.v1.RatecapService.ReleaseConcurrency:output_type -> ratecap.v1.ReleaseConcurrencyResponse
+	8,  // 9: ratecap.v1.RatecapService.SetDynamicLimit:output_type -> ratecap.v1.SetDynamicLimitResponse
+	10, // 10: ratecap.v1.RatecapService.RefundCost:output_type -> ratecap.v1.RefundCostResponse
+	7,  // [7:11] is the sub-list for method output_type
+	3,  // [3:7] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_ratecap_v1_ratecap_proto_init() }
@@ -614,7 +712,7 @@ func file_ratecap_v1_ratecap_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ratecap_v1_ratecap_proto_rawDesc), len(file_ratecap_v1_ratecap_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

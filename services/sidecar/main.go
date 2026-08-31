@@ -17,6 +17,7 @@ import (
 	"github.com/ratecap/sidecar/admin"
 	"github.com/ratecap/sidecar/auth"
 	"github.com/ratecap/sidecar/metrics"
+	"github.com/ratecap/sidecar/negativecache"
 	"github.com/ratecap/sidecar/proxy"
 	"github.com/ratecap/sidecar/ratelimit"
 	"github.com/ratecap/sidecar/tlsconfig"
@@ -155,7 +156,7 @@ func main() {
 	shedder := worker.NewShedderWithRamp(maxInflight, rampStartPct)
 
 	protectedMux := http.NewServeMux()
-	protectedMux.Handle("/check", proxy.NewHandler(client, proxy.Sheddable, shedder))
+	protectedMux.Handle("/check", proxy.NewHandlerWithCache(client, proxy.Sheddable, shedder, negativecache.New()))
 	protectedMux.Handle("/release", proxy.NewReleaseHandler(client))
 
 	maxRPS := resolveMaxRPS(os.Getenv("RATECAP_SIDECAR_MAX_RPS"), 1000)

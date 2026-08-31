@@ -205,6 +205,14 @@ func TestTokenBucketLimiter_SetRate_ChangesEffectiveRate(t *testing.T) {
 	}
 }
 
+func TestTokenBucketLimiter_Burst_ReturnsCurrentBurst(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 100, 42, false)
+	if got := l.Burst(); got != 42 {
+		t.Errorf("expected 42, got %d", got)
+	}
+}
+
 func TestTokenBucketLimiter_SetRate_ConcurrentWithCheckIsRaceFree(t *testing.T) {
 	fs := newFakeStore()
 	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
