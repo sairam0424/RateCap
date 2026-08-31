@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ratecap/cli/cmd"
 )
@@ -195,5 +196,203 @@ func TestBenchRun_AcquireReleaseIsCalledEvenForRejectedTickets(t *testing.T) {
 	}
 	if releaseCount != 4 {
 		t.Errorf("expected 4 /release calls even though /check returned 429, got %d", releaseCount)
+	}
+}
+
+func TestBenchRun_DurationModeStopsNearDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "4",
+		"--duration", "200ms",
+		"--report-interval", "1h", // long enough that no snapshot line fires during this short run
+	})
+
+	started := time.Now()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	elapsed := time.Since(started)
+
+	if elapsed < 150*time.Millisecond || elapsed > 500*time.Millisecond {
+		t.Errorf("expected wall-clock elapsed within [150ms, 500ms] of the 200ms duration, got %v", elapsed)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err == nil {
+		t.Fatalf("expected human-readable output (not JSON) by default, got parseable JSON: %v", result)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Total requests:")) {
+		t.Errorf("expected duration-mode output to still report total requests, got:\n%s", out.String())
+	}
+}
+
+func TestBenchRun_DurationModeWithJSONFlagProducesOnlyValidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "4",
+		"--duration", "150ms",
+		"--report-interval", "30ms", // short enough to fire several snapshots during the run
+		"--json",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if bytes.Contains(out.Bytes(), []byte("accepted=")) {
+		t.Errorf("expected --json to suppress windowed snapshot lines, got:\n%s", out.String())
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected output to be valid, unpolluted JSON, got error %v for output %q", err, out.String())
+	}
+	for _, field := range []string{"total_requests", "elapsed_ms", "p50_ms", "p99_ms"} {
+		if _, ok := result[field]; !ok {
+			t.Errorf("expected field %q in JSON output, got %v", field, result)
+		}
+	}
+}
+
+func TestBenchRun_CaptureResourcesOffByDefaultOmitsFieldsFromJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{"bench", "run", "--sidecar-addr", server.URL, "--requests", "3", "--concurrency", "1", "--json"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error %v for output %q", err, out.String())
+	}
+	if _, ok := result["resource_before"]; ok {
+		t.Errorf("expected resource_before omitted from JSON when --capture-resources is unset, got %v", result)
+	}
+	if _, ok := result["resource_after"]; ok {
+		t.Errorf("expected resource_after omitted from JSON when --capture-resources is unset, got %v", result)
+	}
+}
+
+func TestBenchRun_CaptureResourcesFlagDoesNotFailRunWhenBinariesAreUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--requests", "3",
+		"--concurrency", "1",
+		"--capture-resources",
+		"--docker-containers", "core,sidecar",
+		"--redis-addr", "redis://localhost:6379",
+		"--json",
+	})
+
+	// captureResources is best-effort: whether docker/redis-cli happen to be
+	// installed in the test environment must never change whether this
+	// command succeeds.
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error with --capture-resources set: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error %v for output %q", err, out.String())
+	}
+	if _, ok := result["total_requests"]; !ok {
+		t.Errorf("expected total_requests still present alongside resource capture, got %v", result)
+	}
+}
+
+func TestBenchRun_QPSFlagPacesRequests(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "5",
+		"--requests", "10",
+		"--qps", "20", // 10 requests at 20/s implies >= ~450ms (9 intervals of 50ms, first token free)
+	})
+
+	started := time.Now()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	elapsed := time.Since(started)
+
+	// Unpaced, this fake in-memory server would finish in low single-digit
+	// milliseconds — a generous floor well below the pacing-implied minimum
+	// still clearly distinguishes "paced" from "unpaced," while tolerating
+	// CI timing jitter.
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("expected --qps to pace requests to at least 200ms elapsed, got %v", elapsed)
+	}
+
+	if !bytes.Contains(out.Bytes(), []byte("Total requests: 10")) {
+		t.Errorf("expected output to report 10 total requests, got:\n%s", out.String())
+	}
+}
+
+func TestBenchRun_DurationModePrintsWindowedSnapshots(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "4",
+		"--duration", "300ms",
+		"--report-interval", "50ms",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !bytes.Contains(out.Bytes(), []byte("accepted=")) {
+		t.Errorf("expected at least one windowed snapshot line containing 'accepted=', got:\n%s", out.String())
 	}
 }

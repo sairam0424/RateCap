@@ -67,7 +67,7 @@ RateCap is the only project among these six that implements all four of Stripe's
 
 ## Benchmarks
 
-The numbers below measure two request paths through the demo stack: RateCap's Tier 1 (`Allow()`, a single token-bucket check) and Tier 2 (`Acquire()` followed by `Ticket.Release()`, a concurrency-limit reservation plus its later release — this necessarily also passes through Tier 1 and Tier 3 ahead of it in the pipeline). These are a one-time, dated snapshot from a single machine running the full `sidecar` + `core` + Redis stack over Docker Compose on one host — useful for relative/directional comparison and regression-tracking over time (e.g. "did a later change make Tier 2's overhead meaningfully worse"), not a production capacity-planning number. A real deployment has network hops between services, different hardware, and different traffic shapes that this same-host setup doesn't capture.
+The two tables below (**"Loosened limits"**) measure two request paths through the demo stack: RateCap's Tier 1 (`Allow()`, a single token-bucket check) and Tier 2 (`Acquire()` followed by `Ticket.Release()`, a concurrency-limit reservation plus its later release — this necessarily also passes through Tier 1 and Tier 3 ahead of it in the pipeline) — both run against `docker-compose.bench.yml`, which raises every tier's limits 100-1000x above `deploy/ratecap.yaml`'s shipped defaults specifically so that (almost) nothing is ever rejected. That means these two tables measure **headroom / pass-through overhead only** — the cost of a request that sails through every tier's check — not a capacity number and not rejection behavior; the load-shedder is never actually engaged during either run. These are a one-time, dated snapshot from a single machine running the full `sidecar` + `core` + Redis stack over Docker Compose on one host — useful for relative/directional comparison and regression-tracking over time (e.g. "did a later change make Tier 2's overhead meaningfully worse"), not a production capacity-planning number. A real deployment has network hops between services, different hardware, and different traffic shapes that this same-host setup doesn't capture. For a run against the actual shipped defaults, where the load-shedder does its job, see **"Shipped defaults (load-shedder engaged)"** below.
 
 **Environment:** 2026-07-18, Apple M4 (Darwin arm64), Docker Engine 29.5.3, Go 1.26.2.
 
@@ -77,7 +77,7 @@ The numbers below measure two request paths through the demo stack: RateCap's Ti
 cd deploy
 bash generate-demo-certs.sh
 docker compose -f docker-compose.yml -f docker-compose.bench.yml up --build -d
-cd ../cli && go build -o /tmp/ratecapctl .
+cd ../cli && go build -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
 
 # Tier 1 — Allow()
 /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix bench-tier1
@@ -88,19 +88,56 @@ cd ../cli && go build -o /tmp/ratecapctl .
 cd ../deploy && docker compose -f docker-compose.yml -f docker-compose.bench.yml down
 ```
 
-**Tier 1 — `Allow()`** (concurrency 50, 20,000 requests):
+**Tier 1 — `Allow()`, loosened limits — pass-through overhead only** (concurrency 50, 20,000 requests):
 
 | Total requests | Elapsed | Throughput | P50 | P99 | P99.9 |
 | --- | --- | --- | --- | --- | --- |
 | 20,000 | 1725ms | 11,591.4 req/s | 3.88ms | 11.65ms | 28.02ms |
 
-**Tier 2 — `Acquire()`/`Release()`** (concurrency 50, 20,000 requests):
+**Tier 2 — `Acquire()`/`Release()`, loosened limits — pass-through overhead only** (concurrency 50, 20,000 requests):
 
 | Total requests | Elapsed | Throughput | P50 | P99 | P99.9 |
 | --- | --- | --- | --- | --- | --- |
 | 20,000 | 5395ms | 3,706.7 req/s | 12.96ms | 25.67ms | 34.25ms |
 
 Tier 2's higher latency and lower throughput reflect its extra round trip: `Acquire()` reserves a slot (a Tier 2 check plus a Tier 3 check, both real Redis-backed operations) and the benchmark client then calls `Release()` to free it — genuinely more work per request than Tier 1's single token-bucket check.
+
+### Shipped defaults (load-shedder engaged)
+
+The two runs above use `docker-compose.bench.yml`'s loosened limits and never actually exercise the load-shedder. The runs below use the actual shipped `deploy/ratecap.yaml` defaults (tier 1 `rate=2`/`burst=5`; tier 2 `max_concurrent=3`; tier 3 `max_concurrent=5`; plus the sidecar's own process-wide defensive in-flight cap) against the **same** demo stack, brought up **without** the bench overlay (`docker compose -f docker-compose.yml up --build -d`, no `-f docker-compose.bench.yml`). At `--concurrency 50`, this pool of concurrent clients vastly exceeds those limits, so most requests are correctly rejected by the load-shedder (Tier 3/Tier 4) rather than passing through — **that is the expected, correct behavior being measured here, not a bug or a regression.** `--requests` is lowered to 2,000 (from the loosened run's 20,000) since almost every request past the first handful legitimately rejects; there is no signal gained from 20k iterations of that.
+
+**Environment:** 2026-08-31, Apple M4 (Darwin arm64), Docker Engine 29.7.2, Go 1.26.5.
+
+**Reproduce it yourself:**
+
+```bash
+cd deploy
+bash generate-demo-certs.sh
+docker compose -f docker-compose.yml up --build -d
+cd ../cli && go build -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
+
+# Tier 1 — Allow(), shipped defaults
+/tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 2000 --key-prefix bench-default-tier1
+
+# Tier 2 — Acquire()/Release(), shipped defaults
+/tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 2000 --key-prefix bench-default-tier2 --acquire
+
+cd ../deploy && docker compose -f docker-compose.yml down -v && rm -rf certs
+```
+
+**Tier 1 — `Allow()`, shipped defaults** (concurrency 50, 2,000 requests):
+
+| Total requests | Accepted | Rejected | Errored | Elapsed | Throughput | P50 | P99 | P99.9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2,000 | 183 | 1,817 | 0 | 609ms | 3,279.2 req/s | 14.22ms | 177.76ms | 177.88ms |
+
+**Tier 2 — `Acquire()`/`Release()`, shipped defaults** (concurrency 50, 2,000 requests):
+
+| Total requests | Accepted | Rejected | Errored | Elapsed | Throughput | P50 | P99 | P99.9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2,000 | 25 | 1,975 | 0 | 625ms | 3,199.7 req/s | 52.09ms | 158.49ms | 158.49ms |
+
+Zero errors in either run confirms rejections are the load-shedder working as designed (`reject_429`/`reject_503` decisions logged by the sidecar), not failures. The benchmark client generates a unique key per request (`<key-prefix>-<workerID>-<seq>`), so per-key Tier 1/Tier 2 limits alone don't explain the bulk of these rejections — cross-referencing the sidecar's structured decision logs during this run shows most rejections coming from Tier 3 (`fleet_shedder`) and Tier 4 (`worker_shedder`), both fleet-/process-wide and therefore saturated immediately by 50 concurrent clients against a `max_concurrent`/in-flight cap sized for a demo, not a load test. Accepted latencies are also markedly higher than the loosened run above (P50 14-52ms vs. 3.88-12.96ms) — the client-observed latency for an accepted request now includes contention with all the concurrently in-flight rejected requests competing for the same tiny worker/fleet budget.
 
 ## Design docs
 

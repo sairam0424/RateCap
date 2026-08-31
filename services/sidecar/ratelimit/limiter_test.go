@@ -42,8 +42,15 @@ func TestLimiter_RefillsOverElapsedTime(t *testing.T) {
 	clock := func() time.Time { return now }
 	l := ratelimit.NewWithClock(2, 2, clock)
 
-	if !l.Allow() || !l.Allow() {
-		t.Fatal("expected both initial burst tokens to be available")
+	// Two separate checks, not `!l.Allow() || !l.Allow()`: that combined form
+	// short-circuits the second call whenever the first already returns
+	// false, silently consuming only one token instead of the two this test
+	// means to exercise.
+	if !l.Allow() {
+		t.Fatal("expected first initial burst token to be available")
+	}
+	if !l.Allow() {
+		t.Fatal("expected second initial burst token to be available")
 	}
 	if l.Allow() {
 		t.Fatal("expected Allow() to return false, bucket empty")

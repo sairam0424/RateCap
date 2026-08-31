@@ -43,7 +43,9 @@ func newTLSCheckCmd() *cobra.Command {
 				return fmt.Errorf("%s's SAN list %v does not cover %q: %w — this is the exact failure mode Helm chart deployments hit when demo certs (SAN: core/sidecar) are reused with a real release name, and it produces no server-side log", certPath, cert.DNSNames, expectedHost, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%s: SAN list %v covers %q\n", certPath, cert.DNSNames, expectedHost)
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s: SAN list %v covers %q\n", certPath, cert.DNSNames, expectedHost); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

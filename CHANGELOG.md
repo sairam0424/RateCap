@@ -11,6 +11,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
 - One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
 
+## [2.9.0] — 2026-08-31 — Phase 5 Performance & DevEx Polish
+
+Minor release: Phase 5 (the final phase) of the v3 upgrade roadmap — closes the remaining benchmark, tooling, dependency-hygiene, and CI-coverage gaps. No request-path limiter behavior changes.
+
+### Added
+
+- A second, honest benchmark run in `README.md` against un-loosened shipped defaults (`deploy/ratecap.yaml`, not the loosened `ratecap-bench.yaml`) — the existing numbers are now explicitly labeled as headroom/pass-through overhead only, not a capacity or rejection-behavior measurement.
+- `ratecapctl bench run --duration`/`--report-interval` — a soak mode backed by a fixed-memory, log-bucketed streaming histogram (`cli/cmd/histogram.go`), replacing the previously unbounded per-sample slice.
+- `RATECAP_PPROF_ENABLED` on `services/core` and `services/sidecar` — opt-in `net/http/pprof`, bound to `127.0.0.1` only, off by default everywhere shipped.
+- `ratecapctl bench run --capture-resources`/`--docker-containers`/`--redis-addr` — best-effort `docker stats`/`redis-cli INFO` snapshots alongside a benchmark run.
+- `.github/workflows/benchmark.yml` — a nightly (and manually-dispatchable) benchmark regression job comparing against a committed `deploy/bench-baseline.json`, never auto-updating that baseline.
+- `golangci-lint` wired into CI (`.golangci.yml`, matrixed across every Go module including `services/core/integrationtests`), alongside the existing `gofmt` gate.
+- `ratecapctl --version` (built from the repo's single `VERSION` source of truth via `-ldflags`) and `bench run --qps` (pacing via `golang.org/x/time/rate`), plus entrypoint tests for `cli/main.go`/`cli/cmd/root.go`/`cli/cmd/bench.go` that didn't exist before.
+- `deploy/helm/ratecap/generate-config.sh` — generates the chart's embedded `config.yaml` from `deploy/ratecap.yaml` instead of hand-copying it, with a CI drift check; documented the previously-undocumented `concurrencySigningKey` secret in the Helm README.
+
+### Changed
+
+- `services/core/integrationtests` — the `testcontainers-go`-based Redis/Toxiproxy integration tests are now their own Go module (own `go.mod`, added to `go.work`), so the production `services/core` module no longer carries that ~40-package transitive dependency tree. `services/core`'s own coverage remains above its 50% CI floor (verified 60.9% after the split).
+- `services/core/Dockerfile`, `services/sidecar/Dockerfile`, `deploy/sampleapp/Dockerfile` — base images pinned to resolved digests (`golang:1.27-alpine@sha256:...`, `alpine:3.24@sha256:...`), closing the last dependency-drift gap (GitHub Actions were already SHA-pinned).
+
 ## [2.8.0] — 2026-08-31 — Phase 4 SDK & API: Token-Cost Wiring
 
 Minor release: Phase 4 of the v3 upgrade roadmap — finishes an already-designed feature. RateCap's Tier 1 substrate was already a generic variable-cost token bucket end-to-end; only the sidecar's hardcoded `Cost: 1` stood in the way.

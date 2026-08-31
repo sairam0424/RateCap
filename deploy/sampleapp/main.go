@@ -40,7 +40,7 @@ func main() {
 			return
 		}
 
-		fmt.Fprintln(w, "checkout processed")
+		fmt.Fprintln(w, "checkout processed") //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
 
 	http.HandleFunc("/slow-report", func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func main() {
 			http.Error(w, "concurrency check failed", http.StatusInternalServerError)
 			return
 		}
-		defer ticket.Release(ctx)
+		defer ticket.Release(ctx) //nolint:errcheck // best-effort per Ticket.Release's own godoc; a lost release is freed by the core's reaper TTL, not by retrying here
 
 		if !ticket.Allowed {
 			w.Header().Set("Retry-After-Ms", fmt.Sprintf("%d", ticket.RetryAfterMs))
@@ -61,7 +61,7 @@ func main() {
 		}
 
 		time.Sleep(2 * time.Second)
-		fmt.Fprintln(w, "report generated")
+		fmt.Fprintln(w, "report generated") //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
 
 	http.HandleFunc("/fleet-demo", func(w http.ResponseWriter, r *http.Request) {
@@ -96,9 +96,9 @@ func main() {
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
 			w.WriteHeader(resp.StatusCode)
-			fmt.Fprintf(w, "shed (priority=%s)\n", priority)
+			fmt.Fprintf(w, "shed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 			return
 		}
 
@@ -114,7 +114,7 @@ func main() {
 			params.Set("token", tok)
 			releaseParams = append(releaseParams, params)
 		}
-		resp.Body.Close()
+		resp.Body.Close() //nolint:errcheck // headers already read; Close error carries no new information
 
 		time.Sleep(2 * time.Second)
 
@@ -124,11 +124,11 @@ func main() {
 				continue
 			}
 			if relResp, err := http.DefaultClient.Do(releaseReq); err == nil {
-				relResp.Body.Close()
+				relResp.Body.Close() //nolint:errcheck // best-effort release response; the release call itself already succeeded by the time we get here
 			}
 		}
 
-		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priority)
+		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
 
 	http.HandleFunc("/worker-demo", func(w http.ResponseWriter, r *http.Request) {
@@ -148,16 +148,16 @@ func main() {
 			http.Error(w, "worker check failed", http.StatusInternalServerError)
 			return
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
 
 		if resp.StatusCode != http.StatusOK {
 			w.WriteHeader(resp.StatusCode)
-			fmt.Fprintf(w, "shed (status=%d)\n", resp.StatusCode)
+			fmt.Fprintf(w, "shed (status=%d)\n", resp.StatusCode) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 			return
 		}
 
 		time.Sleep(2 * time.Second)
-		fmt.Fprintln(w, "worker request processed")
+		fmt.Fprintln(w, "worker request processed") //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
 
 	log.Println("sample app listening on :3000")
