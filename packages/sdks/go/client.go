@@ -18,17 +18,68 @@ func NewClient(sidecarAddr string) *Client {
 	return &Client{sidecarAddr: sidecarAddr, httpClient: http.DefaultClient}
 }
 
+type Priority int
+
+const (
+	Sheddable Priority = iota
+	Critical
+)
+
+func (p Priority) headerValue() string {
+	if p == Critical {
+		return "critical"
+	}
+	return "sheddable"
+}
+
+type checkOptions struct {
+	cost        int
+	hasCost     bool
+	priority    Priority
+	hasPriority bool
+}
+
+type CheckOption func(*checkOptions)
+
+func WithCost(cost int) CheckOption {
+	return func(o *checkOptions) { o.cost, o.hasCost = cost, true }
+}
+
+func WithPriority(p Priority) CheckOption {
+	return func(o *checkOptions) { o.priority, o.hasPriority = p, true }
+}
+
+func applyCheckOptions(opts []CheckOption) checkOptions {
+	var o checkOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
+}
+
+func (o checkOptions) applyToRequest(req *http.Request, query url.Values) {
+	if o.hasCost {
+		query.Set("cost", strconv.Itoa(o.cost))
+	}
+	if o.hasPriority {
+		req.Header.Set("x-ratecap-priority", o.priority.headerValue())
+	}
+}
+
 // Allow is tier-1-only: it never establishes a tier-2 concurrency
 // reservation, since it has no matching Release call to free one. Skipping
 // tier 2 here (rather than leaking a slot per call) is what keeps Allow's
 // original fire-and-forget contract intact now that tier 2 exists.
-func (c *Client) Allow(ctx context.Context, key string) (allowed bool, retryAfterMs int64, err error) {
-	reqURL := c.sidecarAddr + "/check?key=" + url.QueryEscape(key) + "&skip_reservations=true"
+func (c *Client) Allow(ctx context.Context, key string, opts ...CheckOption) (allowed bool, retryAfterMs int64, err error) {
+	query := url.Values{"key": {key}, "skip_reservations": {"true"}}
+	options := applyCheckOptions(opts)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.sidecarAddr+"/check", nil)
 	if err != nil {
 		return false, 0, err
 	}
+	options.applyToRequest(req, query)
+	req.URL.RawQuery = query.Encode()
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -57,6 +108,7 @@ type Ticket struct {
 	RetryAfterMs int64
 
 	client       *Client
+	key          string
 	reservations []reservation
 }
 
@@ -100,13 +152,43 @@ func (t *Ticket) releaseOne(ctx context.Context, r reservation) error {
 	return nil
 }
 
-func (c *Client) Acquire(ctx context.Context, key string) (*Ticket, error) {
-	reqURL := c.sidecarAddr + "/check?key=" + url.QueryEscape(key)
+// Refund reserves-upfront-refund-unused: a caller that estimated a higher
+// cost than it actually used (e.g. an LLM call whose real token count came
+// in under the max_tokens estimate) calls this with the difference. It is
+// independent of Release — a Ticket from a plain Acquire with no reservations
+// can still be refunded, and Refund never touches t.reservations.
+func (t *Ticket) Refund(ctx context.Context, refundAmount int) error {
+	reqURL := t.client.sidecarAddr + "/release"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-RateCap-Refund-Key", t.key)
+	req.Header.Set("X-RateCap-Refund-Amount", strconv.Itoa(refundAmount))
+
+	resp, err := t.client.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ratecap: refund failed with status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) Acquire(ctx context.Context, key string, opts ...CheckOption) (*Ticket, error) {
+	query := url.Values{"key": {key}}
+	options := applyCheckOptions(opts)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.sidecarAddr+"/check", nil)
 	if err != nil {
 		return nil, err
 	}
+	options.applyToRequest(req, query)
+	req.URL.RawQuery = query.Encode()
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -120,17 +202,17 @@ func (c *Client) Acquire(ctx context.Context, key string) (*Ticket, error) {
 		if tok == "" {
 			break
 		}
-		key := resp.Header.Get(fmt.Sprintf("Concurrency-Key-%d", i))
-		reservations = append(reservations, reservation{key: key, tok: tok})
+		resKey := resp.Header.Get(fmt.Sprintf("Concurrency-Key-%d", i))
+		reservations = append(reservations, reservation{key: resKey, tok: tok})
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		return &Ticket{Allowed: true, client: c, reservations: reservations}, nil
+		return &Ticket{Allowed: true, client: c, key: key, reservations: reservations}, nil
 	}
 
 	var retryAfterMs int64
 	if v := resp.Header.Get("Retry-After-Ms"); v != "" {
 		retryAfterMs, _ = strconv.ParseInt(v, 10, 64)
 	}
-	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, client: c, reservations: reservations}, nil
+	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, client: c, key: key, reservations: reservations}, nil
 }
