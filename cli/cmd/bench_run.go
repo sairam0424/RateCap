@@ -85,7 +85,17 @@ func newBenchRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Drive concurrent load against a running sidecar and report latency percentiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result := runBench(cmd.Context(), cmd.OutOrStdout(), sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval)
+			// Windowed snapshot lines are diagnostic progress output, not
+			// part of the result. When --json is set, the caller expects
+			// exactly one JSON object on stdout (e.g. `> result.json`), so
+			// snapshot lines must never share that writer — suppress them
+			// entirely rather than routing to stderr, keeping this a
+			// single, self-contained writer decision.
+			progress := cmd.OutOrStdout()
+			if jsonOutput {
+				progress = io.Discard
+			}
+			result := runBench(cmd.Context(), progress, sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval)
 			if jsonOutput {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				return enc.Encode(result)

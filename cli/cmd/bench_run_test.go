@@ -235,6 +235,43 @@ func TestBenchRun_DurationModeStopsNearDeadline(t *testing.T) {
 	}
 }
 
+func TestBenchRun_DurationModeWithJSONFlagProducesOnlyValidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "4",
+		"--duration", "150ms",
+		"--report-interval", "30ms", // short enough to fire several snapshots during the run
+		"--json",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if bytes.Contains(out.Bytes(), []byte("accepted=")) {
+		t.Errorf("expected --json to suppress windowed snapshot lines, got:\n%s", out.String())
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected output to be valid, unpolluted JSON, got error %v for output %q", err, out.String())
+	}
+	for _, field := range []string{"total_requests", "elapsed_ms", "p50_ms", "p99_ms"} {
+		if _, ok := result[field]; !ok {
+			t.Errorf("expected field %q in JSON output, got %v", field, result)
+		}
+	}
+}
+
 func TestBenchRun_DurationModePrintsWindowedSnapshots(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
