@@ -11,6 +11,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
 - One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
 
+## [2.10.0] — 2026-09-01 — OpenTelemetry Trace-Context Propagation
+
+Minor release: implements the roadmap's originally-deferred Phase 1 stretch item (`docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md`, Phase 1 item 9) — flagged at the time as the largest item in Phase 1, pre-approved to slip, and never re-picked-up by Phase 5's own item list. No request-path decision logic changes.
+
+### Added
+
+- Distributed tracing across the `ratecap-sidecar` → `ratecap-core` gRPC hop: a real `sdktrace.TracerProvider` and the W3C `traceparent` propagator, bootstrapped by a new `otelinit` package in each service (`services/core/otelinit`, `services/sidecar/otelinit`).
+- `otelgrpc` stats handlers on both of core's `RatecapService` gRPC listeners (plaintext and permissive-mode TLS) and on the sidecar's gRPC client to core, so a `traceparent` is actually read from and written to gRPC metadata per RPC.
+- `RATECAP_OTEL_EXPORTER_ENDPOINT` (both services) — unset by default, matching this repo's existing opt-in `RATECAP_*` convention. Spans are always created and ended (context propagation is real either way), but exporting them anywhere requires setting this env var; **no OTel Collector, Jaeger, or Tempo is added to `deploy/docker-compose.yml`**, and the demo stack's `/healthz` and sample endpoints are unaffected either way.
+- A `ratecap.priority` span attribute (`"sheddable"`/`"critical"`) on both the sidecar's client span and core's server span — the only per-request data attached to a span. The caller-controlled request key, and any header or query-parameter value, is never put in a span attribute or in baggage.
+
+### Verification
+
+- `services/core/grpcserver/otel_integration_test.go` — a real `bufconn`-backed gRPC call, both sides wired with the otelgrpc stats handlers under an in-memory `tracetest` exporter, asserting the recorded client and server spans share one trace ID with a parent-child relationship, and that `ratecap.priority` is correct for both a `SHEDDABLE` and a `CRITICAL` request.
+
 ## [2.9.0] — 2026-08-31 — Phase 5 Performance & DevEx Polish
 
 Minor release: Phase 5 (the final phase) of the v3 upgrade roadmap — closes the remaining benchmark, tooling, dependency-hygiene, and CI-coverage gaps. No request-path limiter behavior changes.
