@@ -579,15 +579,24 @@ func TestServeHTTP_CriticalPriorityDoesNotConsumeOrReleaseAShedderSlot(t *testin
 }
 
 type fakeReleaseClient struct {
-	lastKey   string
-	lastToken string
-	err       error
+	lastKey          string
+	lastToken        string
+	lastRefundKey    string
+	lastRefundAmount int32
+	err              error
+	refundErr        error
 }
 
 func (f *fakeReleaseClient) ReleaseConcurrency(_ context.Context, in *ratecapv1.ReleaseConcurrencyRequest, _ ...grpc.CallOption) (*ratecapv1.ReleaseConcurrencyResponse, error) {
 	f.lastKey = in.Key
 	f.lastToken = in.ConcurrencyToken
 	return &ratecapv1.ReleaseConcurrencyResponse{}, f.err
+}
+
+func (f *fakeReleaseClient) RefundCost(_ context.Context, in *ratecapv1.RefundCostRequest, _ ...grpc.CallOption) (*ratecapv1.RefundCostResponse, error) {
+	f.lastRefundKey = in.Key
+	f.lastRefundAmount = in.RefundAmount
+	return &ratecapv1.RefundCostResponse{}, f.refundErr
 }
 
 func TestReleaseHandler_ServeHTTP_CallsReleaseConcurrencyWithKeyAndToken(t *testing.T) {
@@ -701,6 +710,100 @@ func TestReleaseHandler_ServeHTTP_RejectsNonPOSTMethod(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_RefundKeyAloneIsSufficient(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Refund-Key", "user-1")
+	req.Header.Set("X-RateCap-Refund-Amount", "7")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if client.lastRefundKey != "user-1" || client.lastRefundAmount != 7 {
+		t.Errorf("expected RefundCost called with key=user-1 amount=7, got key=%q amount=%d", client.lastRefundKey, client.lastRefundAmount)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_RefundAndConcurrencyReleaseBothHappenInOneCall(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Concurrency-Key", "user-1")
+	req.Header.Set("X-RateCap-Concurrency-Token", "tok-abc")
+	req.Header.Set("X-RateCap-Refund-Key", "user-1")
+	req.Header.Set("X-RateCap-Refund-Amount", "7")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if client.lastKey != "user-1" || client.lastToken != "tok-abc" {
+		t.Errorf("expected ReleaseConcurrency called, got key=%q token=%q", client.lastKey, client.lastToken)
+	}
+	if client.lastRefundKey != "user-1" || client.lastRefundAmount != 7 {
+		t.Errorf("expected RefundCost also called, got key=%q amount=%d", client.lastRefundKey, client.lastRefundAmount)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_InvalidRefundAmountReturns400(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Refund-Key", "user-1")
+	req.Header.Set("X-RateCap-Refund-Amount", "not-a-number")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for an unparseable refund amount, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_RefundAmountOverflowingInt32Returns400(t *testing.T) {
+	client := &fakeReleaseClient{}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Refund-Key", "user-1")
+	req.Header.Set("X-RateCap-Refund-Amount", "2147483648")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for a refund amount overflowing int32 (would otherwise wrap negative), got %d", rec.Code)
+	}
+	if client.lastRefundKey != "" {
+		t.Errorf("expected RefundCost to never be called with a corrupted amount, got key=%q amount=%d", client.lastRefundKey, client.lastRefundAmount)
+	}
+}
+
+func TestReleaseHandler_ServeHTTP_RefundUpstreamErrorReturns500(t *testing.T) {
+	client := &fakeReleaseClient{refundErr: errors.New("core unavailable")}
+	h := proxy.NewReleaseHandler(client)
+
+	req := httptest.NewRequest(http.MethodPost, "/release", nil)
+	req.Header.Set("X-RateCap-Refund-Key", "user-1")
+	req.Header.Set("X-RateCap-Refund-Amount", "7")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
 	}
 }
 

@@ -165,6 +165,7 @@ func priorityLabel(p Priority) string {
 
 type releaseClient interface {
 	ReleaseConcurrency(ctx context.Context, in *ratecapv1.ReleaseConcurrencyRequest, opts ...grpc.CallOption) (*ratecapv1.ReleaseConcurrencyResponse, error)
+	RefundCost(ctx context.Context, in *ratecapv1.RefundCostRequest, opts ...grpc.CallOption) (*ratecapv1.RefundCostResponse, error)
 }
 
 type ReleaseHandler struct {
@@ -181,22 +182,43 @@ func (h *ReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := r.Header.Get("X-RateCap-Concurrency-Key")
-	if key == "" {
+	concurrencyKey := r.Header.Get("X-RateCap-Concurrency-Key")
+	refundKey := r.Header.Get("X-RateCap-Refund-Key")
+	if concurrencyKey == "" && refundKey == "" {
 		http.Error(w, "missing key parameter", http.StatusBadRequest)
 		return
 	}
-	token := r.Header.Get("X-RateCap-Concurrency-Token")
 
-	_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: key, ConcurrencyToken: token})
-	if err != nil {
-		log.Printf("sidecar: /release: upstream call failed: %v", err)
-		metrics.RecordUpstreamError("release_concurrency")
-		metrics.RecordReleaseResult("failure")
-		http.Error(w, "upstream release failed", http.StatusInternalServerError)
-		return
+	if concurrencyKey != "" {
+		token := r.Header.Get("X-RateCap-Concurrency-Token")
+		_, err := h.client.ReleaseConcurrency(r.Context(), &ratecapv1.ReleaseConcurrencyRequest{Key: concurrencyKey, ConcurrencyToken: token})
+		if err != nil {
+			log.Printf("sidecar: /release: upstream release failed: %v", err)
+			metrics.RecordUpstreamError("release_concurrency")
+			metrics.RecordReleaseResult("failure")
+			http.Error(w, "upstream release failed", http.StatusInternalServerError)
+			return
+		}
+		metrics.RecordReleaseResult("success")
 	}
 
-	metrics.RecordReleaseResult("success")
+	if refundKey != "" {
+		// ParseInt with bitSize=32 (not Atoi), matching resolveCost above —
+		// rejects an out-of-int32-range value here rather than silently
+		// wrapping it to a negative RefundAmount via the int32() cast below.
+		refundAmount, err := strconv.ParseInt(r.Header.Get("X-RateCap-Refund-Amount"), 10, 32)
+		if err != nil || refundAmount <= 0 {
+			http.Error(w, "invalid or missing X-RateCap-Refund-Amount", http.StatusBadRequest)
+			return
+		}
+		_, err = h.client.RefundCost(r.Context(), &ratecapv1.RefundCostRequest{Key: refundKey, RefundAmount: int32(refundAmount)})
+		if err != nil {
+			log.Printf("sidecar: /release: upstream refund failed: %v", err)
+			metrics.RecordUpstreamError("refund_cost")
+			http.Error(w, "upstream refund failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
