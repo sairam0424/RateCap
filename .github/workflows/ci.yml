@@ -162,6 +162,14 @@ jobs:
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
+      # deploy/ratecap.yaml is the single source of truth for shipped
+      # defaults; values.yaml's embedded config.yaml block is generated from
+      # it. Fails the same way `gofmt -l .` does if the two ever diverge.
+      - name: Check embedded config is not stale
+        run: |
+          ./deploy/helm/ratecap/generate-config.sh
+          git diff --exit-code deploy/helm/ratecap/values.yaml
+
       - name: Lint
         run: helm lint deploy/helm/ratecap
 
