@@ -77,7 +77,7 @@ The two tables below (**"Loosened limits"**) measure two request paths through t
 cd deploy
 bash generate-demo-certs.sh
 docker compose -f docker-compose.yml -f docker-compose.bench.yml up --build -d
-cd ../cli && go build -o /tmp/ratecapctl .
+cd ../cli && go build -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
 
 # Tier 1 — Allow()
 /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix bench-tier1
@@ -114,7 +114,7 @@ The two runs above use `docker-compose.bench.yml`'s loosened limits and never ac
 cd deploy
 bash generate-demo-certs.sh
 docker compose -f docker-compose.yml up --build -d
-cd ../cli && go build -o /tmp/ratecapctl .
+cd ../cli && go build -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
 
 # Tier 1 — Allow(), shipped defaults
 /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 2000 --key-prefix bench-default-tier1

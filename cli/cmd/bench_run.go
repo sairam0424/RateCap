@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/time/rate"
 
 	ratecap "github.com/ratecap/sdk-go"
 )
@@ -88,6 +89,7 @@ func newBenchRunCmd() *cobra.Command {
 	var captureResourcesFlag bool
 	var dockerContainers string
 	var redisAddr string
+	var qps float64
 
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -119,7 +121,7 @@ func newBenchRunCmd() *cobra.Command {
 				resourceBefore = &snap
 			}
 
-			result := runBench(cmd.Context(), progress, sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval)
+			result := runBench(cmd.Context(), progress, sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval, qps)
 
 			if captureResourcesFlag {
 				snap := captureResources(cmd.Context(), defaultRunner, containers, redisAddr)
@@ -166,6 +168,7 @@ func newBenchRunCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&captureResourcesFlag, "capture-resources", false, "capture best-effort docker/redis resource snapshots immediately before and after the run")
 	cmd.Flags().StringVar(&dockerContainers, "docker-containers", "", "comma-separated container names/IDs to snapshot with `docker stats` (only used with --capture-resources)")
 	cmd.Flags().StringVar(&redisAddr, "redis-addr", "", "redis connection URI (e.g. redis://localhost:6379) to snapshot with `redis-cli INFO` (only used with --capture-resources)")
+	cmd.Flags().Float64Var(&qps, "qps", 0, "cap the aggregate request rate across all workers to this many requests/sec (0 = unlimited, unchanged behavior)")
 
 	return cmd
 }
@@ -198,7 +201,7 @@ func printResourceSection(w io.Writer, label string, snap *ResourceSnapshot) err
 // result. Latency is tracked via a bounded streaming histogram rather than
 // an unbounded slice of raw samples, so memory usage is constant whether
 // the run issues a thousand requests or runs for hours under --duration.
-func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concurrency, requests int, keyPrefix string, useAcquire bool, duration, reportInterval time.Duration) benchResult {
+func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concurrency, requests int, keyPrefix string, useAcquire bool, duration, reportInterval time.Duration, qps float64) benchResult {
 	client := ratecap.NewClient(sidecarAddr)
 	cumulative := newBenchCounters()
 
@@ -207,7 +210,25 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 		window = newBenchCounters()
 	}
 
+	// A single limiter shared across every worker paces the *aggregate*
+	// request rate to --qps, not a per-worker rate — matching how an
+	// operator reasons about "cap this benchmark at N req/s overall".
+	var limiter *rate.Limiter
+	if qps > 0 {
+		limiter = rate.NewLimiter(rate.Limit(qps), 1)
+	}
+
 	issue := func(ctx context.Context, workerID, seq int) {
+		if limiter != nil {
+			// A context cancellation/deadline while waiting for a token means
+			// this request is skipped entirely (it never actually happened),
+			// not counted as errored/rejected — the caller's deadline (e.g.
+			// --duration's ctx) is the thing that decided to stop, not the
+			// limiter.
+			if err := limiter.Wait(ctx); err != nil {
+				return
+			}
+		}
 		key := fmt.Sprintf("%s-%d-%d", keyPrefix, workerID, seq)
 		reqStart := time.Now()
 		kind := "accepted"

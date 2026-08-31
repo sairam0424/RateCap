@@ -335,6 +335,42 @@ func TestBenchRun_CaptureResourcesFlagDoesNotFailRunWhenBinariesAreUnavailable(t
 	}
 }
 
+func TestBenchRun_QPSFlagPacesRequests(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "5",
+		"--requests", "10",
+		"--qps", "20", // 10 requests at 20/s implies >= ~450ms (9 intervals of 50ms, first token free)
+	})
+
+	started := time.Now()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	elapsed := time.Since(started)
+
+	// Unpaced, this fake in-memory server would finish in low single-digit
+	// milliseconds — a generous floor well below the pacing-implied minimum
+	// still clearly distinguishes "paced" from "unpaced," while tolerating
+	// CI timing jitter.
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("expected --qps to pace requests to at least 200ms elapsed, got %v", elapsed)
+	}
+
+	if !bytes.Contains(out.Bytes(), []byte("Total requests: 10")) {
+		t.Errorf("expected output to report 10 total requests, got:\n%s", out.String())
+	}
+}
+
 func TestBenchRun_DurationModePrintsWindowedSnapshots(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
