@@ -2,14 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project intends to follow [Semantic Versioning](https://semver.org/) once a first tagged release is cut.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/) (v2.3.2 is a documented exception — see its own entry below).
 
 ## [Unreleased]
 
-### Added
+### Pending (requires action outside this repo)
 
-- `.github/workflows/ci.yml` — GitHub Actions CI building and testing all five Go modules on every push/PR to `develop`/`main`.
-- One-time PyPI Trusted Publisher setup instructions for `.github/workflows/publish-python-sdk.yml`, documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — without this manual PyPI + GitHub Environments setup, the first `python-sdk-v*` tag push fails with an OIDC authentication error.
+- Publishing `packages/sdks/python` to PyPI: `.github/workflows/publish-python-sdk.yml` and its PyPI Trusted Publisher (OIDC) setup are ready, but no `python-sdk-v*` tag has been pushed yet. Before the first one is, a repo admin must complete the one-time PyPI pending-publisher registration documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — the first tag push otherwise fails with an OIDC authentication error, not a build error.
 
 ## [2.9.0] — 2026-08-31 — Phase 5 Performance & DevEx Polish
 
