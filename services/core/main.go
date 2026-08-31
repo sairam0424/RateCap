@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -27,6 +28,7 @@ import (
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
 	coremetrics "github.com/ratecap/core/metrics"
+	"github.com/ratecap/core/otelinit"
 	"github.com/ratecap/core/store"
 	"github.com/ratecap/core/tlsconfig"
 )
@@ -164,6 +166,16 @@ func maybeStartPprofServer(enabled bool, addr string) (net.Listener, error) {
 }
 
 func main() {
+	otelShutdown, err := otelinit.Init(context.Background(), "ratecap-core")
+	if err != nil {
+		log.Fatalf("failed to initialize OpenTelemetry: %v", err)
+	}
+	defer func() {
+		if err := otelShutdown(context.Background()); err != nil {
+			log.Printf("otel shutdown failed: %v", err)
+		}
+	}()
+
 	configPath := os.Getenv("RATECAP_CONFIG_PATH")
 	if configPath == "" {
 		configPath = "/etc/ratecap/ratecap.yaml"
@@ -277,6 +289,7 @@ func main() {
 
 	serverOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 	if tlsCertPath != "" && tlsMode != "permissive" {
 		tlsConf, stopCertWatch, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
@@ -314,6 +327,7 @@ func main() {
 		tlsServerOpts := []grpc.ServerOption{
 			grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
 			grpc.Creds(credentials.NewTLS(permissiveConf)),
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		}
 		tlsGrpcServer := grpc.NewServer(tlsServerOpts...)
 		ratecapv1.RegisterRatecapServiceServer(tlsGrpcServer, coreServer)

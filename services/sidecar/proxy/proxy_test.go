@@ -29,10 +29,12 @@ type fakeRatecapClient struct {
 	resp    *ratecapv1.CheckRateLimitResponse
 	err     error
 	lastReq *ratecapv1.CheckRateLimitRequest
+	lastCtx context.Context
 }
 
-func (f *fakeRatecapClient) CheckRateLimit(_ context.Context, in *ratecapv1.CheckRateLimitRequest, _ ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error) {
+func (f *fakeRatecapClient) CheckRateLimit(ctx context.Context, in *ratecapv1.CheckRateLimitRequest, _ ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error) {
 	f.lastReq = in
+	f.lastCtx = ctx
 	return f.resp, f.err
 }
 

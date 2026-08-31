@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 
 	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
@@ -123,12 +126,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	skipReservations := r.URL.Query().Get("skip_reservations") == "true"
 
-	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{
+	// otelgrpc's client stats handler creates its own per-RPC span inside
+	// grpc.ClientConn.Invoke and never hands the derived context back to
+	// caller code, so trace.SpanFromContext(r.Context()) before the call
+	// cannot reach it — confirmed by reading otelgrpc's clientHandler.TagRPC
+	// (it returns the span-bearing context to grpc-go's internal call
+	// machinery only). Starting an explicit client-kind span here is the
+	// only way to attach a real, per-request attribute to a span that is
+	// actually exported: it becomes otelgrpc's span's parent, so the trace ID
+	// still links this hop to core's server span end-to-end.
+	//
+	// Fixed, small-cardinality label only — never the caller-controlled key,
+	// a header, or a query param (SECURITY.md's decision-log stance applies
+	// equally to span data leaving the process via OTLP export).
+	callCtx, span := otel.Tracer("github.com/ratecap/sidecar/proxy").Start(
+		r.Context(), "ratecap.sidecar.check_rate_limit", trace.WithSpanKind(trace.SpanKindClient),
+	)
+	span.SetAttributes(attribute.String("ratecap.priority", priorityLabel(priority)))
+
+	resp, err := h.client.CheckRateLimit(callCtx, &ratecapv1.CheckRateLimitRequest{
 		Key:              key,
 		Cost:             int32(resolveCost(r.URL.Query().Get("cost"))),
 		SkipReservations: skipReservations,
 		Priority:         protoPriority,
 	})
+	span.End()
 	if err != nil {
 		log.Printf("sidecar: /check: upstream call failed: %v", err)
 		metrics.RecordUpstreamError("check_rate_limit")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
@@ -21,6 +23,7 @@ import (
 	"github.com/ratecap/sidecar/auth"
 	"github.com/ratecap/sidecar/metrics"
 	"github.com/ratecap/sidecar/negativecache"
+	"github.com/ratecap/sidecar/otelinit"
 	"github.com/ratecap/sidecar/proxy"
 	"github.com/ratecap/sidecar/ratelimit"
 	"github.com/ratecap/sidecar/tlsconfig"
@@ -172,6 +175,16 @@ func maybeStartPprofServer(enabled bool, addr string) (net.Listener, error) {
 }
 
 func main() {
+	otelShutdown, err := otelinit.Init(context.Background(), "ratecap-sidecar")
+	if err != nil {
+		log.Fatalf("failed to initialize OpenTelemetry: %v", err)
+	}
+	defer func() {
+		if err := otelShutdown(context.Background()); err != nil {
+			log.Printf("otel shutdown failed: %v", err)
+		}
+	}()
+
 	coreAddr := os.Getenv("RATECAP_CORE_ADDR")
 	if coreAddr == "" {
 		coreAddr = "localhost:9090"
@@ -209,6 +222,7 @@ func main() {
 		coreAddr,
 		grpc.WithTransportCredentials(transportCreds),
 		grpc.WithUnaryInterceptor(auth.UnaryClientInterceptor(sharedSecret)),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
 		log.Fatalf("failed to connect to ratecap-core at %s: %v", coreAddr, err)
