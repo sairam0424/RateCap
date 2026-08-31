@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/ratecap/sidecar/decisionlog"
 	"github.com/ratecap/sidecar/metrics"
+	"github.com/ratecap/sidecar/negativecache"
 	"github.com/ratecap/sidecar/proxy"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -902,5 +904,67 @@ func TestServeHTTP_AllowDoesNotSetRateLimitResetHeader(t *testing.T) {
 
 	if got := rec.Header().Get("RateLimit-Reset"); got != "" {
 		t.Errorf("expected no RateLimit-Reset header on an allowed request, got %q", got)
+	}
+}
+
+func TestServeHTTP_ShortCircuitsOnCachedDenial(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	cache := negativecache.New()
+	cache.MarkDenied("user-1", 5*time.Second)
+	h := proxy.NewHandlerWithCache(client, proxy.Sheddable, worker.NewShedder(100), cache)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 from the cached denial, got %d", rec.Code)
+	}
+	if client.lastReq != nil {
+		t.Error("expected core to never be called for a cache-short-circuited request")
+	}
+}
+
+func TestServeHTTP_MarksDeniedOnRealReject429(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, RetryAfterMs: 5000}}
+	cache := negativecache.New()
+	h := proxy.NewHandlerWithCache(client, proxy.Sheddable, worker.NewShedder(100), cache)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-2", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	denied, _ := cache.IsDenied("user-2")
+	if !denied {
+		t.Error("expected a real REJECT_429 to mark the key denied in the cache")
+	}
+}
+
+func TestServeHTTP_DoesNotMarkDeniedOnAllow(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	cache := negativecache.New()
+	h := proxy.NewHandlerWithCache(client, proxy.Sheddable, worker.NewShedder(100), cache)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-3", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	denied, _ := cache.IsDenied("user-3")
+	if denied {
+		t.Error("expected ALLOW to never mark a key denied")
+	}
+}
+
+func TestNewHandler_HasNoNegativeCacheByDefault(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected NewHandler (no cache) to work exactly as before, got %d", rec.Code)
 	}
 }

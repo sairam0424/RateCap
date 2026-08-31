@@ -14,6 +14,7 @@ import (
 
 	"github.com/ratecap/sidecar/decisionlog"
 	"github.com/ratecap/sidecar/metrics"
+	"github.com/ratecap/sidecar/negativecache"
 	"github.com/ratecap/sidecar/shadow"
 	"github.com/ratecap/sidecar/worker"
 )
@@ -41,10 +42,18 @@ type Handler struct {
 	client          ratecapClient
 	defaultPriority Priority
 	shedder         *worker.Shedder
+	negativeCache   *negativecache.Cache
 }
 
 func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder) *Handler {
 	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder}
+}
+
+// NewHandlerWithCache is NewHandler plus an explicit negative cache — kept
+// as a separate constructor (rather than a parameter on NewHandler) so
+// every existing call site of NewHandler keeps compiling unchanged.
+func NewHandlerWithCache(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder, cache *negativecache.Cache) *Handler {
+	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder, negativeCache: cache}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +64,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		http.Error(w, "missing key parameter", http.StatusBadRequest)
+		return
+	}
+
+	if h.negativeCache != nil {
+		if denied, remaining := h.negativeCache.IsDenied(key); denied {
+			w.Header().Set("Retry-After-Ms", strconv.FormatInt(remaining.Milliseconds(), 10))
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
 	protoPriority := ratecapv1.Priority_SHEDDABLE
 	if priority == Critical {
@@ -63,11 +86,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if priority != Critical {
 		if !h.shedder.Allow() {
-			shedKey := r.URL.Query().Get("key")
 			if !shadow.GlobalOverrideEnabled() {
 				metrics.RecordDecision("worker_shedder", "reject_503")
 				metrics.SetWorkerInFlight(h.shedder.InFlight())
-				decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+				decisionlog.Log("worker_shedder", key, "reject_503", priorityLabel(priority), time.Since(start))
 				metrics.RecordDecisionLatency("worker_shedder", time.Since(start))
 				w.Header().Set("X-RateCap-Shed-Tier", "4")
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -76,7 +98,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.RecordDecision("worker_shedder", "reject_503")
 			metrics.RecordShadowWouldReject("worker_shedder")
 			metrics.SetWorkerInFlight(h.shedder.InFlight())
-			decisionlog.Log("worker_shedder", shedKey, "reject_503", priorityLabel(priority), time.Since(start))
+			decisionlog.Log("worker_shedder", key, "reject_503", priorityLabel(priority), time.Since(start))
 			metrics.RecordDecisionLatency("worker_shedder", time.Since(start))
 			log.Printf("worker shedder: would have shed request, shadow mode active")
 		} else {
@@ -86,12 +108,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				metrics.SetWorkerInFlight(h.shedder.InFlight())
 			}()
 		}
-	}
-
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		http.Error(w, "missing key parameter", http.StatusBadRequest)
-		return
 	}
 
 	skipReservations := r.URL.Query().Get("skip_reservations") == "true"
@@ -125,6 +141,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.RecordDecisionLatency(resp.Tier, time.Since(start))
 	if action != realAction {
 		metrics.RecordShadowWouldReject(resp.Tier)
+	}
+
+	// Scoped to REJECT_429 specifically, not REJECT_503: a 503 fleet/worker
+	// shed is a capacity signal that can flip to ALLOW moments later once
+	// load drops, whereas a 429 has a caller-specific RetryAfterMs that's
+	// the exact right cache window — caching a 503 risks needlessly
+	// extending an outage's blast radius past when capacity actually
+	// recovered.
+	if h.negativeCache != nil && realAction == ratecapv1.Action_REJECT_429 {
+		h.negativeCache.MarkDenied(key, time.Duration(resp.RetryAfterMs)*time.Millisecond)
 	}
 
 	switch action {
