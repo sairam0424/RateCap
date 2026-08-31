@@ -116,12 +116,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Same 6 module directories as build-and-test's matrix — each is a
-        # separate go.mod and golangci-lint (like go build/test) must be run
-        # from inside each one individually.
+        # Same module directories as build-and-test's matrix, plus
+        # services/core/integrationtests (added by the testcontainers-go
+        # module split — not part of build-and-test's own matrix since it has
+        # no coverage floor, but it's still a real go.mod that needs linting
+        # like every other one). Each is a separate go.mod and golangci-lint
+        # (like go build/test) must be run from inside each one individually.
         module:
           - proto
           - services/core
+          - services/core/integrationtests
           - services/sidecar
           - packages/sdks/go
           - deploy/sampleapp
