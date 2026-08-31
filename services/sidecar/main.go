@@ -195,9 +195,14 @@ func main() {
 		log.Fatalf("RATECAP_SHARED_SECRET must be set — ratecap-sidecar refuses to start without gRPC authentication configured")
 	}
 
+	// RATECAP_ADMIN_SECRET is genuinely optional (see helm chart README's
+	// adminSecret section): an empty secret makes admin.Handler reject every
+	// request (ServeHTTP's provided == "" / length-mismatch check never
+	// matches an empty h.secret), which safely disables /admin/set-limit
+	// rather than blocking sidecar startup entirely.
 	adminSecret := os.Getenv("RATECAP_ADMIN_SECRET")
 	if adminSecret == "" {
-		log.Fatalf("RATECAP_ADMIN_SECRET must be set — ratecap-sidecar refuses to start without the admin-lever endpoint's own authentication configured")
+		log.Printf("RATECAP_ADMIN_SECRET not set — /admin/set-limit is disabled")
 	}
 
 	tlsCertPath := os.Getenv("RATECAP_TLS_CERT_PATH")
