@@ -70,18 +70,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.negativeCache != nil {
-		if denied, remaining := h.negativeCache.IsDenied(key); denied {
-			w.Header().Set("Retry-After-Ms", strconv.FormatInt(remaining.Milliseconds(), 10))
-			w.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
-	}
-
 	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
 	protoPriority := ratecapv1.Priority_SHEDDABLE
 	if priority == Critical {
 		protoPriority = ratecapv1.Priority_CRITICAL
+	}
+
+	// A cache-short-circuited denial must look identical, on the wire and in
+	// observability, to the real REJECT_429 it's standing in for — it's the
+	// same decision, just served from local memory instead of a fresh core
+	// round trip. Priority resolution moved above this block (from its
+	// original position further down) so decisionlog has a real label here
+	// instead of a duplicate ResolvePriority call.
+	if h.negativeCache != nil {
+		if denied, remaining := h.negativeCache.IsDenied(key); denied {
+			metrics.RecordDecision("negative_cache", "reject_429")
+			decisionlog.Log("negative_cache", key, "reject_429", priorityLabel(priority), time.Since(start))
+			metrics.RecordDecisionLatency("negative_cache", time.Since(start))
+			remainingMs := remaining.Milliseconds()
+			w.Header().Set("Retry-After-Ms", strconv.FormatInt(remainingMs, 10))
+			w.Header().Set("RateLimit-Reset", strconv.FormatInt((remainingMs+999)/1000, 10))
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
 	}
 
 	if priority != Critical {

@@ -926,6 +926,39 @@ func TestServeHTTP_ShortCircuitsOnCachedDenial(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_CachedDenialSetsIETFRateLimitResetHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	cache := negativecache.New()
+	cache.MarkDenied("user-1", 2500*time.Millisecond)
+	h := proxy.NewHandlerWithCache(client, proxy.Sheddable, worker.NewShedder(100), cache)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("RateLimit-Reset"); got != "3" {
+		t.Errorf(`expected RateLimit-Reset="3" (~2.5s rounded up) on a cache-short-circuited 429, same as a fresh REJECT_429 from core, got %q`, got)
+	}
+}
+
+func TestServeHTTP_CachedDenialRecordsMetricsAndDecisionLog(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	cache := negativecache.New()
+	cache.MarkDenied("user-1", 5*time.Second)
+	h := proxy.NewHandlerWithCache(client, proxy.Sheddable, worker.NewShedder(100), cache)
+
+	before := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("negative_cache", "reject_429"))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	after := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("negative_cache", "reject_429"))
+	if after != before+1 {
+		t.Errorf("expected ratecap_decisions_total{tier=negative_cache,action=reject_429} to increment on a cache-short-circuited denial (so dashboards/alerts don't under-report rejection volume for repeat offenders), before=%v after=%v", before, after)
+	}
+}
+
 func TestServeHTTP_MarksDeniedOnRealReject429(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, RetryAfterMs: 5000}}
 	cache := negativecache.New()
