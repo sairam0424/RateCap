@@ -7,6 +7,8 @@ package otelinit
 
 import (
 	"context"
+	"crypto/tls"
+	"net"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -15,7 +17,25 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"google.golang.org/grpc/credentials"
 )
+
+// isLoopbackEndpoint reports whether a "host:port" exporter endpoint's host
+// is loopback. Plaintext is only ever safe for a collector on the same host
+// (or reachable only via a trusted local network namespace) — anything else
+// needs a verified TLS transport, since span data (service name, span
+// attributes) would otherwise cross the network unencrypted.
+func isLoopbackEndpoint(endpoint string) bool {
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		host = endpoint
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
 
 // Init sets the global TracerProvider and text-map propagator. serviceName
 // identifies this process in exported spans (e.g. "ratecap-sidecar"). The
@@ -30,7 +50,20 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(res)}
 	endpoint := os.Getenv("RATECAP_OTEL_EXPORTER_ENDPOINT")
 	if endpoint != "" {
-		exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(endpoint), otlptracegrpc.WithInsecure())
+		exporterOpts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
+		if isLoopbackEndpoint(endpoint) {
+			// A collector on the same host (or a Unix-domain-socket-style
+			// loopback target) never crosses a real network boundary.
+			exporterOpts = append(exporterOpts, otlptracegrpc.WithInsecure())
+		} else {
+			// Any non-loopback endpoint must use a verified TLS transport —
+			// span data (service name, ratecap.priority) must never leave
+			// this host over plaintext.
+			exporterOpts = append(exporterOpts, otlptracegrpc.WithTLSCredentials(
+				credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}),
+			))
+		}
+		exporter, err := otlptracegrpc.New(ctx, exporterOpts...)
 		if err != nil {
 			return nil, err
 		}
