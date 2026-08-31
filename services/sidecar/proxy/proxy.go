@@ -132,6 +132,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	case ratecapv1.Action_REJECT_429:
 		w.Header().Set("Retry-After-Ms", strconv.FormatInt(resp.RetryAfterMs, 10))
+		// (ms + 999) / 1000 is integer ceiling division — the IETF draft's
+		// reset field is in whole seconds, and rounding down would tell a
+		// caller it's safe to retry slightly before it actually is.
+		w.Header().Set("RateLimit-Reset", strconv.FormatInt((resp.RetryAfterMs+999)/1000, 10))
 		w.WriteHeader(http.StatusTooManyRequests)
 	case ratecapv1.Action_REJECT_503:
 		w.Header().Set("X-RateCap-Shed-Tier", "3")

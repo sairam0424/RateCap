@@ -876,3 +876,31 @@ func TestServeHTTP_CostOverflowingInt32FallsBackToOne(t *testing.T) {
 		t.Errorf("expected fallback Cost=1 for a value overflowing int32 (would otherwise wrap negative), got %d", client.lastReq.Cost)
 	}
 }
+
+func TestServeHTTP_Reject429SetsIETFRateLimitResetHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, RetryAfterMs: 2500}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("RateLimit-Reset"); got != "3" {
+		t.Errorf(`expected RateLimit-Reset="3" (2500ms rounded up to 3s), got %q`, got)
+	}
+}
+
+func TestServeHTTP_AllowDoesNotSetRateLimitResetHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("RateLimit-Reset"); got != "" {
+		t.Errorf("expected no RateLimit-Reset header on an allowed request, got %q", got)
+	}
+}
