@@ -27,6 +27,7 @@ import (
 	"github.com/ratecap/core/grpcserver"
 	"github.com/ratecap/core/limiter"
 	coremetrics "github.com/ratecap/core/metrics"
+	"github.com/ratecap/core/otelinit"
 	"github.com/ratecap/core/store"
 	"github.com/ratecap/core/tlsconfig"
 )
@@ -164,6 +165,16 @@ func maybeStartPprofServer(enabled bool, addr string) (net.Listener, error) {
 }
 
 func main() {
+	otelShutdown, err := otelinit.Init(context.Background(), "ratecap-core")
+	if err != nil {
+		log.Fatalf("failed to initialize OpenTelemetry: %v", err)
+	}
+	defer func() {
+		if err := otelShutdown(context.Background()); err != nil {
+			log.Printf("otel shutdown failed: %v", err)
+		}
+	}()
+
 	configPath := os.Getenv("RATECAP_CONFIG_PATH")
 	if configPath == "" {
 		configPath = "/etc/ratecap/ratecap.yaml"
