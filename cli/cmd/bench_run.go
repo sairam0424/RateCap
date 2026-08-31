@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -25,9 +26,49 @@ type benchResult struct {
 	P999Ms        float64 `json:"p999_ms"`
 }
 
-type benchOutcome struct {
-	elapsed time.Duration
-	kind    string // "accepted", "rejected", or "errored"
+// benchCounters tracks accepted/rejected/errored totals plus an accepted-
+// latency histogram. Counters are atomics (workers increment concurrently);
+// the histogram is internally mutex-guarded but fixed-memory regardless of
+// sample count.
+type benchCounters struct {
+	accepted uint64
+	rejected uint64
+	errored  uint64
+	hist     *Histogram
+}
+
+func newBenchCounters() *benchCounters {
+	return &benchCounters{hist: newHistogram()}
+}
+
+func (c *benchCounters) record(kind string, elapsed time.Duration) {
+	switch kind {
+	case "accepted":
+		atomic.AddUint64(&c.accepted, 1)
+		c.hist.Record(elapsed)
+	case "rejected":
+		atomic.AddUint64(&c.rejected, 1)
+	case "errored":
+		atomic.AddUint64(&c.errored, 1)
+	}
+}
+
+func (c *benchCounters) totals() (accepted, rejected, errored uint64) {
+	return atomic.LoadUint64(&c.accepted), atomic.LoadUint64(&c.rejected), atomic.LoadUint64(&c.errored)
+}
+
+// reportSnapshot prints a windowed progress line and resets the window's
+// counters/histogram in place, so a multi-hour --duration run never retains
+// more than one window's worth of samples at a time.
+func (c *benchCounters) reportSnapshot(w io.Writer, elapsed time.Duration) {
+	accepted := atomic.SwapUint64(&c.accepted, 0)
+	rejected := atomic.SwapUint64(&c.rejected, 0)
+	errored := atomic.SwapUint64(&c.errored, 0)
+	p50 := c.hist.Percentile(0.50)
+	p99 := c.hist.Percentile(0.99)
+	c.hist.Reset()
+	fmt.Fprintf(w, "[%ds] accepted=%d rejected=%d errored=%d p50=%.2fms p99=%.2fms\n",
+		int(elapsed.Seconds()), accepted, rejected, errored, p50, p99)
 }
 
 func newBenchRunCmd() *cobra.Command {
@@ -37,12 +78,14 @@ func newBenchRunCmd() *cobra.Command {
 	var keyPrefix string
 	var useAcquire bool
 	var jsonOutput bool
+	var duration time.Duration
+	var reportInterval time.Duration
 
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Drive concurrent load against a running sidecar and report latency percentiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result := runBench(cmd.Context(), sidecarAddr, concurrency, requests, keyPrefix, useAcquire)
+			result := runBench(cmd.Context(), cmd.OutOrStdout(), sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval)
 			if jsonOutput {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				return enc.Encode(result)
@@ -58,20 +101,87 @@ func newBenchRunCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&sidecarAddr, "sidecar-addr", "http://localhost:8080", "target sidecar address")
 	cmd.Flags().IntVar(&concurrency, "concurrency", 10, "number of parallel workers")
-	cmd.Flags().IntVar(&requests, "requests", 1000, "total number of requests across all workers")
+	cmd.Flags().IntVar(&requests, "requests", 1000, "total number of requests across all workers (ignored when --duration is set)")
 	cmd.Flags().StringVar(&keyPrefix, "key-prefix", "bench", "prefix for generated request keys")
 	cmd.Flags().BoolVar(&useAcquire, "acquire", false, "use Acquire()/Release() (tier 2) instead of Allow() (tier 1)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON instead of a human-readable summary")
+	cmd.Flags().DurationVar(&duration, "duration", 0, "run for this long instead of a fixed --requests count (e.g. \"30s\", \"1h\") — a soak run with fixed memory usage")
+	cmd.Flags().DurationVar(&reportInterval, "report-interval", 5*time.Second, "how often to print a windowed progress snapshot (only meaningful when --duration is set)")
 
 	return cmd
 }
 
-func runBench(ctx context.Context, sidecarAddr string, concurrency, requests int, keyPrefix string, useAcquire bool) benchResult {
+// runBench drives load against the sidecar and returns the cumulative
+// result. Latency is tracked via a bounded streaming histogram rather than
+// an unbounded slice of raw samples, so memory usage is constant whether
+// the run issues a thousand requests or runs for hours under --duration.
+func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concurrency, requests int, keyPrefix string, useAcquire bool, duration, reportInterval time.Duration) benchResult {
 	client := ratecap.NewClient(sidecarAddr)
+	cumulative := newBenchCounters()
 
-	var mu sync.Mutex
-	var outcomes []benchOutcome
+	var window *benchCounters
+	if duration > 0 {
+		window = newBenchCounters()
+	}
 
+	issue := func(ctx context.Context, workerID, seq int) {
+		key := fmt.Sprintf("%s-%d-%d", keyPrefix, workerID, seq)
+		reqStart := time.Now()
+		kind := "accepted"
+		if useAcquire {
+			ticket, err := client.Acquire(ctx, key)
+			switch {
+			case err != nil:
+				kind = "errored"
+			case !ticket.Allowed:
+				kind = "rejected"
+			}
+			if err == nil {
+				ticket.Release(ctx)
+			}
+		} else {
+			allowed, _, err := client.Allow(ctx, key)
+			switch {
+			case err != nil:
+				kind = "errored"
+			case !allowed:
+				kind = "rejected"
+			}
+		}
+		elapsed := time.Since(reqStart)
+		cumulative.record(kind, elapsed)
+		if window != nil {
+			window.record(kind, elapsed)
+		}
+	}
+
+	start := time.Now()
+	if duration > 0 {
+		runBenchDuration(ctx, progress, concurrency, duration, reportInterval, window, issue)
+	} else {
+		runBenchFixedRequests(ctx, concurrency, requests, issue)
+	}
+	totalElapsed := time.Since(start)
+
+	accepted, rejected, errored := cumulative.totals()
+	total := accepted + rejected + errored
+
+	return benchResult{
+		TotalRequests: int(total),
+		Accepted:      int(accepted),
+		Rejected:      int(rejected),
+		Errored:       int(errored),
+		ElapsedMs:     totalElapsed.Milliseconds(),
+		ThroughputRPS: float64(total) / totalElapsed.Seconds(),
+		P50Ms:         cumulative.hist.Percentile(0.50),
+		P99Ms:         cumulative.hist.Percentile(0.99),
+		P999Ms:        cumulative.hist.Percentile(0.999),
+	}
+}
+
+// runBenchFixedRequests preserves the original behavior: a fixed number of
+// requests distributed across a worker pool via a buffered jobs channel.
+func runBenchFixedRequests(ctx context.Context, concurrency, requests int, issue func(ctx context.Context, workerID, seq int)) {
 	var wg sync.WaitGroup
 	jobs := make(chan int, requests)
 	for i := 0; i < requests; i++ {
@@ -79,77 +189,68 @@ func runBench(ctx context.Context, sidecarAddr string, concurrency, requests int
 	}
 	close(jobs)
 
-	start := time.Now()
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
 			for seq := range jobs {
-				key := fmt.Sprintf("%s-%d-%d", keyPrefix, workerID, seq)
-				reqStart := time.Now()
-				kind := "accepted"
-				if useAcquire {
-					ticket, err := client.Acquire(ctx, key)
-					switch {
-					case err != nil:
-						kind = "errored"
-					case !ticket.Allowed:
-						kind = "rejected"
-					}
-					if err == nil {
-						ticket.Release(ctx)
-					}
-				} else {
-					allowed, _, err := client.Allow(ctx, key)
-					switch {
-					case err != nil:
-						kind = "errored"
-					case !allowed:
-						kind = "rejected"
-					}
-				}
-				elapsed := time.Since(reqStart)
-				mu.Lock()
-				outcomes = append(outcomes, benchOutcome{elapsed: elapsed, kind: kind})
-				mu.Unlock()
+				issue(ctx, workerID, seq)
 			}
 		}(w)
 	}
 	wg.Wait()
-	totalElapsed := time.Since(start)
-
-	var accepted, rejected, errored int
-	var acceptedLatencies []time.Duration
-	for _, o := range outcomes {
-		switch o.kind {
-		case "accepted":
-			accepted++
-			acceptedLatencies = append(acceptedLatencies, o.elapsed)
-		case "rejected":
-			rejected++
-		case "errored":
-			errored++
-		}
-	}
-	sort.Slice(acceptedLatencies, func(i, j int) bool { return acceptedLatencies[i] < acceptedLatencies[j] })
-
-	return benchResult{
-		TotalRequests: len(outcomes),
-		Accepted:      accepted,
-		Rejected:      rejected,
-		Errored:       errored,
-		ElapsedMs:     totalElapsed.Milliseconds(),
-		ThroughputRPS: float64(len(outcomes)) / totalElapsed.Seconds(),
-		P50Ms:         percentileMs(acceptedLatencies, 0.50),
-		P99Ms:         percentileMs(acceptedLatencies, 0.99),
-		P999Ms:        percentileMs(acceptedLatencies, 0.999),
-	}
 }
 
-func percentileMs(sorted []time.Duration, p float64) float64 {
-	if len(sorted) == 0 {
-		return 0
+// runBenchDuration runs every worker until the deadline instead of a fixed
+// request count. A separate goroutine ticks every reportInterval and prints
+// a windowed snapshot from window, which is reset after each print — the
+// cumulative counters/histogram used for the final summary (tracked inside
+// issue itself) are untouched by windowing.
+func runBenchDuration(
+	ctx context.Context,
+	progress io.Writer,
+	concurrency int,
+	duration, reportInterval time.Duration,
+	window *benchCounters,
+	issue func(ctx context.Context, workerID, seq int),
+) {
+	deadlineCtx, cancel := context.WithTimeout(ctx, duration)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for w := 0; w < concurrency; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			seq := 0
+			for {
+				select {
+				case <-deadlineCtx.Done():
+					return
+				default:
+					issue(deadlineCtx, workerID, seq)
+					seq++
+				}
+			}
+		}(w)
 	}
-	idx := int(float64(len(sorted)-1) * p)
-	return float64(sorted[idx].Microseconds()) / 1000.0
+
+	reportDone := make(chan struct{})
+	go func() {
+		defer close(reportDone)
+		start := time.Now()
+		ticker := time.NewTicker(reportInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-deadlineCtx.Done():
+				return
+			case <-ticker.C:
+				window.reportSnapshot(progress, time.Since(start))
+			}
+		}
+	}()
+
+	wg.Wait()
+	<-reportDone
 }

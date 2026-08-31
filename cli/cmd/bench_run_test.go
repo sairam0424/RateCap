@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ratecap/cli/cmd"
 )
@@ -195,5 +196,67 @@ func TestBenchRun_AcquireReleaseIsCalledEvenForRejectedTickets(t *testing.T) {
 	}
 	if releaseCount != 4 {
 		t.Errorf("expected 4 /release calls even though /check returned 429, got %d", releaseCount)
+	}
+}
+
+func TestBenchRun_DurationModeStopsNearDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "4",
+		"--duration", "200ms",
+		"--report-interval", "1h", // long enough that no snapshot line fires during this short run
+	})
+
+	started := time.Now()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	elapsed := time.Since(started)
+
+	if elapsed < 150*time.Millisecond || elapsed > 500*time.Millisecond {
+		t.Errorf("expected wall-clock elapsed within [150ms, 500ms] of the 200ms duration, got %v", elapsed)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err == nil {
+		t.Fatalf("expected human-readable output (not JSON) by default, got parseable JSON: %v", result)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Total requests:")) {
+		t.Errorf("expected duration-mode output to still report total requests, got:\n%s", out.String())
+	}
+}
+
+func TestBenchRun_DurationModePrintsWindowedSnapshots(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--concurrency", "4",
+		"--duration", "300ms",
+		"--report-interval", "50ms",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !bytes.Contains(out.Bytes(), []byte("accepted=")) {
+		t.Errorf("expected at least one windowed snapshot line containing 'accepted=', got:\n%s", out.String())
 	}
 }
