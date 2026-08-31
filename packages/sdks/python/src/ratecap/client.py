@@ -1,3 +1,5 @@
+import ssl
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -44,7 +46,7 @@ class Ticket:
             },
         )
         try:
-            with urllib.request.urlopen(req) as resp:
+            with self._client._urlopen(req) as resp:
                 if resp.status != 200:
                     raise RuntimeError(f"refund failed with status {resp.status}")
         except urllib.error.HTTPError as err:
@@ -59,8 +61,32 @@ class Ticket:
 
 
 class Client:
-    def __init__(self, sidecar_addr):
+    def __init__(
+        self, sidecar_addr, timeout=5.0, max_retries=0, backoff_base=0.1, ca_file=None
+    ):
         self._sidecar_addr = sidecar_addr.rstrip("/")
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._backoff_base = backoff_base
+        self._ssl_context = None
+        if ca_file is not None:
+            self._ssl_context = ssl.create_default_context(cafile=ca_file)
+
+    def _urlopen(self, req):
+        attempt = 0
+        while True:
+            try:
+                kwargs = {"timeout": self._timeout}
+                if self._ssl_context is not None:
+                    kwargs["context"] = self._ssl_context
+                return urllib.request.urlopen(req, **kwargs)
+            except urllib.error.HTTPError:
+                raise
+            except Exception:
+                if attempt >= self._max_retries:
+                    raise
+                time.sleep(self._backoff_base * (2**attempt))
+                attempt += 1
 
     def allow(self, key, cost=None, priority=None):
         params = {"key": key, "skip_reservations": "true"}
@@ -71,7 +97,7 @@ class Client:
         headers = {"x-ratecap-priority": priority} if priority else {}
         req = urllib.request.Request(url, method="GET", headers=headers)
         try:
-            with urllib.request.urlopen(req) as resp:
+            with self._urlopen(req) as resp:
                 return AllowResult(allowed=True)
         except urllib.error.HTTPError as err:
             retry_after_ms = int(err.headers.get("Retry-After-Ms", 0) or 0)
@@ -86,7 +112,7 @@ class Client:
         headers = {"x-ratecap-priority": priority} if priority else {}
         req = urllib.request.Request(url, method="GET", headers=headers)
         try:
-            with urllib.request.urlopen(req) as resp:
+            with self._urlopen(req) as resp:
                 reservations = self._parse_reservations(resp.headers)
                 return Ticket(self, key, allowed=True, reservations=reservations)
         except urllib.error.HTTPError as err:
@@ -122,6 +148,6 @@ class Client:
                 "X-RateCap-Concurrency-Token": reservation.token,
             },
         )
-        with urllib.request.urlopen(req) as resp:
+        with self._urlopen(req) as resp:
             if resp.status != 200:
                 raise RuntimeError(f"release failed with status {resp.status}")
