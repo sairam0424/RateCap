@@ -8,6 +8,7 @@ service RatecapService {
   rpc CheckRateLimit(CheckRateLimitRequest) returns (CheckRateLimitResponse);
   rpc ReleaseConcurrency(ReleaseConcurrencyRequest) returns (ReleaseConcurrencyResponse);
   rpc SetDynamicLimit(SetDynamicLimitRequest) returns (SetDynamicLimitResponse);
+  rpc RefundCost(RefundCostRequest) returns (RefundCostResponse);
 }
 
 enum Action {
@@ -60,3 +61,10 @@ message SetDynamicLimitResponse {
   int32 previous_value = 2;
   int32 new_value = 3;
 }
+
+message RefundCostRequest {
+  string key = 1;
+  int32 refund_amount = 2; // tokens to return to Tier 1's bucket for this key, clamped to burst
+}
+
+message RefundCostResponse {}

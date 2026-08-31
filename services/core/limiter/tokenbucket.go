@@ -46,6 +46,14 @@ func (l *TokenBucketLimiter) SetRate(rate int) (previous int) {
 	return previous
 }
 
+// Burst exposes the current burst config so RefundCost can pass it as the
+// refund Lua script's clamp bound.
+func (l *TokenBucketLimiter) Burst() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.burst
+}
+
 func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, error) {
 	l.mu.RLock()
 	rate, burst, shadowMode := l.rate, l.burst, l.shadowMode

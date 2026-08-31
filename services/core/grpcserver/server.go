@@ -33,17 +33,26 @@ type reservedPctSetter interface {
 	SetReservedCriticalPct(pct int) (previous int, err error)
 }
 
+type refunder interface {
+	RefundTokens(ctx context.Context, key string, burst, refundAmount int) error
+}
+
+type burstGetter interface {
+	Burst() int
+}
+
 type Server struct {
 	ratecapv1.UnimplementedRatecapServiceServer
 	pipeline     checker
 	releaser     concurrencyReleaser
 	rateLimiter  dynamicLimitSetter
 	fleetShedder reservedPctSetter
+	refundStore  refunder
 	signingKey   []byte
 }
 
-func NewServer(p checker, releaser concurrencyReleaser, rateLimiter dynamicLimitSetter, fleetShedder reservedPctSetter, signingKey []byte) *Server {
-	return &Server{pipeline: p, releaser: releaser, rateLimiter: rateLimiter, fleetShedder: fleetShedder, signingKey: signingKey}
+func NewServer(p checker, releaser concurrencyReleaser, rateLimiter dynamicLimitSetter, fleetShedder reservedPctSetter, refundStore refunder, signingKey []byte) *Server {
+	return &Server{pipeline: p, releaser: releaser, rateLimiter: rateLimiter, fleetShedder: fleetShedder, refundStore: refundStore, signingKey: signingKey}
 }
 
 // verifyToken confirms a Tier 2 concurrency token was actually issued by
@@ -127,6 +136,24 @@ func (s *Server) SetDynamicLimit(ctx context.Context, req *ratecapv1.SetDynamicL
 	default:
 		return nil, status.Error(codes.InvalidArgument, `tier must be "rate_limiter" or "fleet_shedder"`)
 	}
+}
+
+// RefundCost's burstGetter type assertion keeps dynamicLimitSetter — the
+// existing narrow interface rateLimiter is typed as — from needing a
+// Burst() method itself; the real *limiter.TokenBucketLimiter passed in by
+// main.go satisfies both interfaces simultaneously, so the assertion always
+// succeeds in production. Test fakes that only implement SetRate legitimately
+// skip it, defaulting burst to 0 — harmless for a test double whose
+// RefundTokens fake doesn't care about the burst value's correctness.
+func (s *Server) RefundCost(ctx context.Context, req *ratecapv1.RefundCostRequest) (*ratecapv1.RefundCostResponse, error) {
+	burst := 0
+	if bg, ok := s.rateLimiter.(burstGetter); ok {
+		burst = bg.Burst()
+	}
+	if err := s.refundStore.RefundTokens(ctx, req.Key, burst, int(req.RefundAmount)); err != nil {
+		return nil, internalError("RefundCost", err)
+	}
+	return &ratecapv1.RefundCostResponse{}, nil
 }
 
 func internalError(context string, err error) error {

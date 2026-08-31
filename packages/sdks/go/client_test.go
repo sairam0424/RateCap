@@ -258,3 +258,136 @@ func TestTicket_Release_NoOpWhenNoTokenWasIssued(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestAllow_WithCost_SendsCostQueryParam(t *testing.T) {
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithCost(5)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := capturedQuery.Get("cost"); got != "5" {
+		t.Errorf("expected cost=5 on the /check request, got %q", got)
+	}
+}
+
+func TestAllow_WithoutCostOption_OmitsCostQueryParam(t *testing.T) {
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := capturedQuery.Get("cost"); got != "" {
+		t.Errorf("expected no cost param when WithCost is not used (server-side default of 1 applies), got %q", got)
+	}
+}
+
+func TestAllow_WithPriority_SendsPriorityHeader(t *testing.T) {
+	var capturedHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeader = r.Header.Get("x-ratecap-priority")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithPriority(ratecap.Critical)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedHeader != "critical" {
+		t.Errorf(`expected x-ratecap-priority: critical, got %q`, capturedHeader)
+	}
+}
+
+func TestAcquire_WithCostAndPriority_SendsBoth(t *testing.T) {
+	var capturedQuery url.Values
+	var capturedHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		capturedHeader = r.Header.Get("x-ratecap-priority")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, err := client.Acquire(context.Background(), "user-1", ratecap.WithCost(1500), ratecap.WithPriority(ratecap.Critical)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := capturedQuery.Get("cost"); got != "1500" {
+		t.Errorf("expected cost=1500, got %q", got)
+	}
+	if capturedHeader != "critical" {
+		t.Errorf(`expected x-ratecap-priority: critical, got %q`, capturedHeader)
+	}
+}
+
+func TestTicket_Refund_SendsRefundHeaders(t *testing.T) {
+	var refundCalls []http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/check":
+			w.WriteHeader(http.StatusOK)
+		case "/release":
+			refundCalls = append(refundCalls, r.Header)
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	ticket, err := client.Acquire(context.Background(), "user-1", ratecap.WithCost(1500))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := ticket.Refund(context.Background(), 1200); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(refundCalls) != 1 {
+		t.Fatalf("expected exactly 1 /release call for the refund, got %d", len(refundCalls))
+	}
+	if got := refundCalls[0].Get("X-RateCap-Refund-Key"); got != "user-1" {
+		t.Errorf("expected X-RateCap-Refund-Key=user-1, got %q", got)
+	}
+	if got := refundCalls[0].Get("X-RateCap-Refund-Amount"); got != "1200" {
+		t.Errorf("expected X-RateCap-Refund-Amount=1200, got %q", got)
+	}
+}
+
+func TestTicket_Refund_ReturnsErrorOnNon200(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/check":
+			w.WriteHeader(http.StatusOK)
+		case "/release":
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	ticket, err := client.Acquire(context.Background(), "user-1", ratecap.WithCost(1500))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := ticket.Refund(context.Background(), 1200); err == nil {
+		t.Fatal("expected an error when the sidecar returns non-200 for the refund")
+	}
+}

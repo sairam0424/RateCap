@@ -21,10 +21,14 @@ var tokenBucketScript string
 //go:embed lua/concurrent_limiter.lua
 var concurrentLimiterScript string
 
+//go:embed lua/refund_tokens.lua
+var refundTokensScript string
+
 type RedisStore struct {
 	client            *redis.Client
 	tokenBucket       *redis.Script
 	concurrentLimiter *redis.Script
+	refundTokens      *redis.Script
 	signingKey        []byte
 }
 
@@ -35,6 +39,7 @@ func NewRedisStore(client *redis.Client, signingKey []byte) *RedisStore {
 		client:            client,
 		tokenBucket:       redis.NewScript(tokenBucketScript),
 		concurrentLimiter: redis.NewScript(concurrentLimiterScript),
+		refundTokens:      redis.NewScript(refundTokensScript),
 		signingKey:        signingKey,
 	}
 }
@@ -107,6 +112,14 @@ func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, ma
 		return false, "", fmt.Errorf("store: unexpected token type %T in lua script result", result[1])
 	}
 	return allowed == 1, token, nil
+}
+
+func (s *RedisStore) RefundTokens(ctx context.Context, key string, burst, refundAmount int) error {
+	key = rateLimiterKeyPrefix + key
+	start := time.Now()
+	err := s.refundTokens.Run(ctx, s.client, []string{key}, burst, refundAmount).Err()
+	coremetrics.RecordRedisCall("refund_tokens", time.Since(start), err)
+	return err
 }
 
 func (s *RedisStore) DecrConcurrent(ctx context.Context, key, token string) error {

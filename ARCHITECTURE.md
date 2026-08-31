@@ -163,3 +163,21 @@ RateCap does not flip any of this automatically or by default — every transiti
 ### Certificate hot-reload
 
 Both services now watch their cert/key files via the same `fsnotify` library already used for `ratecap.yaml`'s config hot-reload, and swap in the reloaded certificate without a restart — an externally-rotated cert (e.g. cert-manager) takes effect automatically. The CA pool is loaded once at startup and is NOT hot-reloaded; CA rotation still requires a restart.
+
+## Token-cost wiring (v2.8.0)
+
+Tier 1 has always been a generic variable-cost token bucket internally (`token_bucket.lua`, `RedisStore.CheckAndDecrement`, and `CheckRateLimitRequest.cost` all supported arbitrary cost since v1) — the sidecar simply hardcoded `Cost: 1` on every call. `/check?cost=N` now wires this through (default `1`, unchanged for any caller that doesn't pass it).
+
+### Reserve-upfront, refund-unused
+
+Mirroring the AWS Bedrock/LiteLLM pattern for LLM token accounting: a caller can pass a conservative cost estimate (e.g. `EstimateLLMCost(input_tokens, max_tokens)`) to `/check`, then once the real usage is known, refund the unused portion via `/release` with `X-RateCap-Refund-Key`/`X-RateCap-Refund-Amount`. This is a *new*, separate bounded Lua script (`refund_tokens.lua`) that clamps to `burst` on write — it is NOT implemented as `CheckAndDecrement` with a negative cost, since `token_bucket.lua`'s refill arithmetic only re-clamps to `burst` on the *next* call, which would let a large refund transiently exceed `burst` and stay there until some unrelated future call happened to correct it.
+
+A refund and a Tier 2 concurrency release are independent and can be combined in one `/release` call — see `services/sidecar/proxy.ReleaseHandler`.
+
+### IETF rate-limit headers (partial)
+
+`RateLimit-Reset` (seconds, IETF `draft-ietf-httpapi-ratelimit-headers`) is emitted on `429` responses, computed from the existing `RetryAfterMs`. `limit` and `remaining` are **not** emitted — `ratecap-core` does not track or return a per-key remaining-token count today; adding that is a proto change (new Lua script return value, new `CheckRateLimitResponse` field) that belongs in its own future spec, not folded silently into this partial step.
+
+### Negative cache
+
+The sidecar keeps a local, in-memory cache of recently-denied identifiers (`services/sidecar/negativecache`), keyed by the same `RetryAfterMs` value the real decision already returned — a repeat request for a key still within its own denial window short-circuits before ever calling core, a cheap p99 win under a sustained abuse flood. This is complementary to, not a replacement for, Tier 4's worker shedder: the cache only ever short-circuits a key core has *already* rejected once; it never makes an independent shedding decision of its own.

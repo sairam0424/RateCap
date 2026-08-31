@@ -69,7 +69,7 @@ func (f *fakeFleetShedder) SetReservedCriticalPct(pct int) (int, error) {
 
 func TestCheckRateLimit_ReturnsAllowDecision(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -85,7 +85,7 @@ func TestCheckRateLimit_ReturnsAllowDecision(t *testing.T) {
 
 func TestCheckRateLimit_ConvertsQueueActionToProtoQueue(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.QUEUE, Tier: "concurrency_limiter"}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -101,7 +101,7 @@ func TestCheckRateLimit_ConvertsQueueActionToProtoQueue(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsTierFromDecision(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Tier: "rate_limiter"}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -117,7 +117,7 @@ func TestCheckRateLimit_ReturnsTierFromDecision(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsReject429WithRetryAfter(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 250}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -136,7 +136,7 @@ func TestCheckRateLimit_ReturnsReject429WithRetryAfter(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsReservationsWhenPresent(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW, Reservations: []limiter.TokenReservation{{Key: "user-1", Token: "tok-abc"}}}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -155,7 +155,7 @@ func TestCheckRateLimit_ReturnsReservationsWhenPresent(t *testing.T) {
 
 func TestCheckRateLimit_ReturnsNoReservationsWhenNonePresent(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -171,7 +171,7 @@ func TestCheckRateLimit_ReturnsNoReservationsWhenNonePresent(t *testing.T) {
 
 func TestCheckRateLimit_PropagatesSkipReservationsToPipeline(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:              "user-1",
@@ -188,7 +188,7 @@ func TestCheckRateLimit_PropagatesSkipReservationsToPipeline(t *testing.T) {
 
 func TestCheckRateLimit_PropagatesCriticalPriorityToPipeline(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:      "user-1",
@@ -205,7 +205,7 @@ func TestCheckRateLimit_PropagatesCriticalPriorityToPipeline(t *testing.T) {
 
 func TestCheckRateLimit_DefaultPriorityMapsToSheddable(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -221,7 +221,7 @@ func TestCheckRateLimit_DefaultPriorityMapsToSheddable(t *testing.T) {
 
 func TestCheckRateLimit_ExplicitSheddablePriorityMapsToSheddable(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:      "user-1",
@@ -238,7 +238,7 @@ func TestCheckRateLimit_ExplicitSheddablePriorityMapsToSheddable(t *testing.T) {
 
 func TestCheckRateLimit_UnspecifiedPriorityMapsToSheddable(t *testing.T) {
 	fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:      "user-1",
@@ -255,7 +255,7 @@ func TestCheckRateLimit_UnspecifiedPriorityMapsToSheddable(t *testing.T) {
 
 func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
 	fl := &fakeLimiter{err: errors.New("redis: unexpected type *redis.StatusCmd for result")}
-	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
 		Key:  "user-1",
@@ -274,7 +274,7 @@ func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
 
 func TestReleaseConcurrency_CallsDecrConcurrentWithKeyAndToken(t *testing.T) {
 	releaser := &fakeReleaser{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 	token := signTestToken("tok-abc", testSigningKey)
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
@@ -294,7 +294,7 @@ func TestReleaseConcurrency_CallsDecrConcurrentWithKeyAndToken(t *testing.T) {
 
 func TestReleaseConcurrency_SanitizesStoreErrorButPropagatesFailure(t *testing.T) {
 	releaser := &fakeReleaser{err: errors.New("dial tcp 10.0.0.5:6379: connect: connection refused")}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 	token := signTestToken("tok-abc", testSigningKey)
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
@@ -314,7 +314,7 @@ func TestReleaseConcurrency_SanitizesStoreErrorButPropagatesFailure(t *testing.T
 
 func TestReleaseConcurrency_AcceptsValidSignedToken(t *testing.T) {
 	releaser := &fakeReleaser{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 	tok := signTestToken("real-uuid", testSigningKey)
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
@@ -331,7 +331,7 @@ func TestReleaseConcurrency_AcceptsValidSignedToken(t *testing.T) {
 
 func TestReleaseConcurrency_RejectsTamperedToken(t *testing.T) {
 	releaser := &fakeReleaser{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 	tok := signTestToken("real-uuid", testSigningKey)
 	tampered := tok[:len(tok)-1] + "0"
 
@@ -352,7 +352,7 @@ func TestReleaseConcurrency_RejectsTamperedToken(t *testing.T) {
 
 func TestReleaseConcurrency_RejectsMalformedToken(t *testing.T) {
 	releaser := &fakeReleaser{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 	malformed := "no-dot-separator-here"
 
 	_, err := s.ReleaseConcurrency(context.Background(), &ratecapv1.ReleaseConcurrencyRequest{
@@ -372,7 +372,7 @@ func TestReleaseConcurrency_RejectsMalformedToken(t *testing.T) {
 
 func TestReleaseConcurrency_RejectsTokenSignedWithDifferentKey(t *testing.T) {
 	releaser := &fakeReleaser{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), releaser, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 	otherKeyForTest := []byte("a-completely-different-hmac-key")
 	tok := signTestToken("real-uuid", otherKeyForTest)
 
@@ -393,7 +393,7 @@ func TestReleaseConcurrency_RejectsTokenSignedWithDifferentKey(t *testing.T) {
 
 func TestSetDynamicLimit_RateLimiterTier_CallsSetRate(t *testing.T) {
 	rl := &fakeRateLimiter{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, rl, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, rl, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.SetDynamicLimit(context.Background(), &ratecapv1.SetDynamicLimitRequest{Tier: "rate_limiter", Value: 500})
 	if err != nil {
@@ -409,7 +409,7 @@ func TestSetDynamicLimit_RateLimiterTier_CallsSetRate(t *testing.T) {
 
 func TestSetDynamicLimit_FleetShedderTier_CallsSetReservedCriticalPct(t *testing.T) {
 	fs := &fakeFleetShedder{}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, fs, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, fs, &fakeRefundStore{}, testSigningKey)
 
 	resp, err := s.SetDynamicLimit(context.Background(), &ratecapv1.SetDynamicLimitRequest{Tier: "fleet_shedder", Value: 60})
 	if err != nil {
@@ -424,7 +424,7 @@ func TestSetDynamicLimit_FleetShedderTier_CallsSetReservedCriticalPct(t *testing
 }
 
 func TestSetDynamicLimit_UnknownTier_ReturnsInvalidArgument(t *testing.T) {
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.SetDynamicLimit(context.Background(), &ratecapv1.SetDynamicLimitRequest{Tier: "not_a_real_tier", Value: 1})
 	if status.Code(err) != codes.InvalidArgument {
@@ -434,10 +434,48 @@ func TestSetDynamicLimit_UnknownTier_ReturnsInvalidArgument(t *testing.T) {
 
 func TestSetDynamicLimit_FleetShedderOutOfRange_ReturnsInvalidArgument(t *testing.T) {
 	fs := &fakeFleetShedder{err: fmt.Errorf("reserved_critical_pct must be between 0 and 100 inclusive, got 200")}
-	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, fs, testSigningKey)
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, fs, &fakeRefundStore{}, testSigningKey)
 
 	_, err := s.SetDynamicLimit(context.Background(), &ratecapv1.SetDynamicLimitRequest{Tier: "fleet_shedder", Value: 200})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Errorf("expected codes.InvalidArgument, got %v", status.Code(err))
+	}
+}
+
+type fakeRefundStore struct {
+	lastKey          string
+	lastBurst        int
+	lastRefundAmount int
+	err              error
+}
+
+func (f *fakeRefundStore) RefundTokens(_ context.Context, key string, burst, refundAmount int) error {
+	f.lastKey, f.lastBurst, f.lastRefundAmount = key, burst, refundAmount
+	return f.err
+}
+
+func TestRefundCost_CallsRefundTokensWithKeyAndAmount(t *testing.T) {
+	refundStore := &fakeRefundStore{}
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, refundStore, testSigningKey)
+
+	_, err := s.RefundCost(context.Background(), &ratecapv1.RefundCostRequest{Key: "user-1", RefundAmount: 7})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if refundStore.lastKey != "user-1" || refundStore.lastRefundAmount != 7 {
+		t.Errorf("expected RefundTokens called with key=user-1 refundAmount=7, got key=%q refundAmount=%d", refundStore.lastKey, refundStore.lastRefundAmount)
+	}
+}
+
+func TestRefundCost_SanitizesStoreError(t *testing.T) {
+	refundStore := &fakeRefundStore{err: errors.New("dial tcp: connection refused")}
+	s := grpcserver.NewServer(limiter.NewPipeline(&fakeLimiter{}), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, refundStore, testSigningKey)
+
+	_, err := s.RefundCost(context.Background(), &ratecapv1.RefundCostRequest{Key: "user-1", RefundAmount: 7})
+	if status.Code(err) != codes.Internal {
+		t.Errorf("expected codes.Internal, got %v", status.Code(err))
+	}
+	if strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("expected sanitized error, but original error text leaked: %v", err)
 	}
 }
