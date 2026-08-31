@@ -17,7 +17,7 @@ spec:
       ports:
         - port: {{ .Values.core.grpcPort }}
         - port: {{ .Values.core.healthPort }}
-        {{- if .Values.tls.enabled }}
+        {{- if and .Values.tls.enabled (eq .Values.tls.mode "permissive") }}
         - port: 9443
         {{- end }}
 ---

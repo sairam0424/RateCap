@@ -55,6 +55,8 @@ spec:
               value: /etc/ratecap/certs/tls.key
             - name: RATECAP_TLS_CA_PATH
               value: /etc/ratecap/certs/ca.crt
+            - name: RATECAP_TLS_MODE
+              value: {{ .Values.tls.mode }}
             {{- end }}
           volumeMounts:
             - name: config

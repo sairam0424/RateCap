@@ -109,6 +109,11 @@ adminSecret:
 # then set enabled: true and the two existingSecretName fields below.
 tls:
   enabled: false
+  # mode mirrors RATECAP_TLS_MODE on services/core (permissive|strict).
+  # "strict" preserves this chart's original tls.enabled=true behavior
+  # exactly: a single all-TLS listener, no second :9443 listener. Only
+  # takes effect when tls.enabled is true.
+  mode: "strict"
   core:
     existingSecretName: ""
   sidecar:
