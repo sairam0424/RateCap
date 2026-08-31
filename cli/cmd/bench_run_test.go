@@ -272,6 +272,69 @@ func TestBenchRun_DurationModeWithJSONFlagProducesOnlyValidJSON(t *testing.T) {
 	}
 }
 
+func TestBenchRun_CaptureResourcesOffByDefaultOmitsFieldsFromJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{"bench", "run", "--sidecar-addr", server.URL, "--requests", "3", "--concurrency", "1", "--json"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error %v for output %q", err, out.String())
+	}
+	if _, ok := result["resource_before"]; ok {
+		t.Errorf("expected resource_before omitted from JSON when --capture-resources is unset, got %v", result)
+	}
+	if _, ok := result["resource_after"]; ok {
+		t.Errorf("expected resource_after omitted from JSON when --capture-resources is unset, got %v", result)
+	}
+}
+
+func TestBenchRun_CaptureResourcesFlagDoesNotFailRunWhenBinariesAreUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{
+		"bench", "run",
+		"--sidecar-addr", server.URL,
+		"--requests", "3",
+		"--concurrency", "1",
+		"--capture-resources",
+		"--docker-containers", "core,sidecar",
+		"--redis-addr", "redis://localhost:6379",
+		"--json",
+	})
+
+	// captureResources is best-effort: whether docker/redis-cli happen to be
+	// installed in the test environment must never change whether this
+	// command succeeds.
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error with --capture-resources set: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error %v for output %q", err, out.String())
+	}
+	if _, ok := result["total_requests"]; !ok {
+		t.Errorf("expected total_requests still present alongside resource capture, got %v", result)
+	}
+}
+
 func TestBenchRun_DurationModePrintsWindowedSnapshots(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

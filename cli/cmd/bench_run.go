@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,15 +16,17 @@ import (
 )
 
 type benchResult struct {
-	TotalRequests int     `json:"total_requests"`
-	Accepted      int     `json:"accepted"`
-	Rejected      int     `json:"rejected"`
-	Errored       int     `json:"errored"`
-	ElapsedMs     int64   `json:"elapsed_ms"`
-	ThroughputRPS float64 `json:"throughput_rps"`
-	P50Ms         float64 `json:"p50_ms"`
-	P99Ms         float64 `json:"p99_ms"`
-	P999Ms        float64 `json:"p999_ms"`
+	TotalRequests  int               `json:"total_requests"`
+	Accepted       int               `json:"accepted"`
+	Rejected       int               `json:"rejected"`
+	Errored        int               `json:"errored"`
+	ElapsedMs      int64             `json:"elapsed_ms"`
+	ThroughputRPS  float64           `json:"throughput_rps"`
+	P50Ms          float64           `json:"p50_ms"`
+	P99Ms          float64           `json:"p99_ms"`
+	P999Ms         float64           `json:"p999_ms"`
+	ResourceBefore *ResourceSnapshot `json:"resource_before,omitempty"`
+	ResourceAfter  *ResourceSnapshot `json:"resource_after,omitempty"`
 }
 
 // benchCounters tracks accepted/rejected/errored totals plus an accepted-
@@ -80,6 +83,9 @@ func newBenchRunCmd() *cobra.Command {
 	var jsonOutput bool
 	var duration time.Duration
 	var reportInterval time.Duration
+	var captureResourcesFlag bool
+	var dockerContainers string
+	var redisAddr string
 
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -95,7 +101,31 @@ func newBenchRunCmd() *cobra.Command {
 			if jsonOutput {
 				progress = io.Discard
 			}
+
+			var containers []string
+			if dockerContainers != "" {
+				containers = strings.Split(dockerContainers, ",")
+			}
+
+			// Resource snapshots are captured immediately before and after
+			// the run, outside runBench itself, so opting out via
+			// --capture-resources=false (the default) is zero behavior
+			// change for every existing caller and test.
+			var resourceBefore, resourceAfter *ResourceSnapshot
+			if captureResourcesFlag {
+				snap := captureResources(cmd.Context(), defaultRunner, containers, redisAddr)
+				resourceBefore = &snap
+			}
+
 			result := runBench(cmd.Context(), progress, sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval)
+
+			if captureResourcesFlag {
+				snap := captureResources(cmd.Context(), defaultRunner, containers, redisAddr)
+				resourceAfter = &snap
+			}
+			result.ResourceBefore = resourceBefore
+			result.ResourceAfter = resourceAfter
+
 			if jsonOutput {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				return enc.Encode(result)
@@ -105,6 +135,8 @@ func newBenchRunCmd() *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "Elapsed: %dms\n", result.ElapsedMs)
 			fmt.Fprintf(cmd.OutOrStdout(), "Throughput: %.1f req/s\n", result.ThroughputRPS)
 			fmt.Fprintf(cmd.OutOrStdout(), "P50: %.2fms  P99: %.2fms  P99.9: %.2fms (accepted requests only)\n", result.P50Ms, result.P99Ms, result.P999Ms)
+			printResourceSection(cmd.OutOrStdout(), "before", result.ResourceBefore)
+			printResourceSection(cmd.OutOrStdout(), "after", result.ResourceAfter)
 			return nil
 		},
 	}
@@ -117,8 +149,28 @@ func newBenchRunCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON instead of a human-readable summary")
 	cmd.Flags().DurationVar(&duration, "duration", 0, "run for this long instead of a fixed --requests count (e.g. \"30s\", \"1h\") — a soak run with fixed memory usage")
 	cmd.Flags().DurationVar(&reportInterval, "report-interval", 5*time.Second, "how often to print a windowed progress snapshot (only meaningful when --duration is set)")
+	cmd.Flags().BoolVar(&captureResourcesFlag, "capture-resources", false, "capture best-effort docker/redis resource snapshots immediately before and after the run")
+	cmd.Flags().StringVar(&dockerContainers, "docker-containers", "", "comma-separated container names/IDs to snapshot with `docker stats` (only used with --capture-resources)")
+	cmd.Flags().StringVar(&redisAddr, "redis-addr", "", "redis connection URI (e.g. redis://localhost:6379) to snapshot with `redis-cli INFO` (only used with --capture-resources)")
 
 	return cmd
+}
+
+// printResourceSection prints a short human-readable resource snapshot
+// section only when the snapshot actually captured something — an empty
+// snapshot (capture disabled, or both docker/redis-cli unavailable) prints
+// nothing.
+func printResourceSection(w io.Writer, label string, snap *ResourceSnapshot) {
+	if isSnapshotEmpty(snap) {
+		return
+	}
+	fmt.Fprintf(w, "Resources (%s):\n", label)
+	if snap.DockerStats != "" {
+		fmt.Fprintf(w, "  docker stats: %s\n", snap.DockerStats)
+	}
+	if snap.RedisInfo != "" {
+		fmt.Fprintf(w, "  redis info: %s\n", snap.RedisInfo)
+	}
 }
 
 // runBench drives load against the sidecar and returns the cumulative
