@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"log"
+	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"strconv"
 	"time"
@@ -105,6 +108,69 @@ func resolveMaxRPS(envVal string, defaultVal float64) float64 {
 	return parsed
 }
 
+// resolvePprofEnabled defaults an unset or invalid RATECAP_PPROF_ENABLED to
+// false — profiling must never turn on just because the env var exists with
+// an unexpected value.
+func resolvePprofEnabled(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		log.Printf("RATECAP_PPROF_ENABLED=%q is not a valid boolean, defaulting to false", raw)
+		return false
+	}
+	return enabled
+}
+
+// newPprofMux builds a dedicated mux for net/http/pprof's handlers rather
+// than relying on the package's side-effect registration on
+// http.DefaultServeMux, which this repo's public servers never use.
+func newPprofMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	for _, name := range []string{"goroutine", "heap", "allocs", "block", "mutex", "threadcreate"} {
+		mux.Handle("/debug/pprof/"+name, pprof.Handler(name))
+	}
+	return mux
+}
+
+// startPprofServer binds addr and serves the pprof mux in the background.
+// It places no restriction on addr itself — callers must pass a
+// loopback-only address in production; tests can pass "127.0.0.1:0" to get
+// an OS-assigned ephemeral port instead.
+func startPprofServer(addr string) (net.Listener, error) {
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	server := &http.Server{Handler: newPprofMux(), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("ratecap-sidecar pprof server on %s failed: %v", addr, err)
+		}
+	}()
+	return lis, nil
+}
+
+// maybeStartPprofServer only listens when enabled — the whole point of the
+// flag is that profiling stays off by default, everywhere, unconditionally.
+func maybeStartPprofServer(enabled bool, addr string) (net.Listener, error) {
+	if !enabled {
+		return nil, nil
+	}
+	lis, err := startPprofServer(addr)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("ratecap-sidecar: pprof enabled on %s — do not expose this port", addr)
+	return lis, nil
+}
+
 func main() {
 	coreAddr := os.Getenv("RATECAP_CORE_ADDR")
 	if coreAddr == "" {
@@ -158,6 +224,10 @@ func main() {
 	protectedMux := http.NewServeMux()
 	protectedMux.Handle("/check", proxy.NewHandlerWithCache(client, proxy.Sheddable, shedder, negativecache.New()))
 	protectedMux.Handle("/release", proxy.NewReleaseHandler(client))
+
+	if _, err := maybeStartPprofServer(resolvePprofEnabled(os.Getenv("RATECAP_PPROF_ENABLED")), "127.0.0.1:6061"); err != nil {
+		log.Fatalf("failed to start pprof server: %v", err)
+	}
 
 	maxRPS := resolveMaxRPS(os.Getenv("RATECAP_SIDECAR_MAX_RPS"), 1000)
 	limiter := ratelimit.New(maxRPS)
