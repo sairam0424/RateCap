@@ -1,0 +1,99 @@
+name: Nightly Benchmark Regression
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+
+      - name: Generate demo certs
+        run: bash deploy/generate-demo-certs.sh
+
+      - name: Bring up stack (loosened bench limits)
+        # A regression signal needs a stable, non-shedding baseline, not one
+        # dominated by rejection noise, so this uses the same loosened
+        # docker-compose.bench.yml overlay as the README's "Loosened limits"
+        # benchmark tables, not the shipped (load-shedder-engaged) defaults.
+        run: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.bench.yml up --build -d
+
+      - name: Wait for stack readiness
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/healthz || true)
+            if [ "$code" = "200" ]; then
+              echo "stack ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "stack did not become ready in time" >&2
+          docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.bench.yml logs
+          exit 1
+
+      - name: Build ratecapctl
+        working-directory: cli
+        run: go build -o /tmp/ratecapctl .
+
+      - name: Run tier 1 benchmark (Allow())
+        run: /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix nightly-tier1 --json > /tmp/tier1.json
+
+      - name: Run tier 2 benchmark (Acquire()/Release())
+        run: /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix nightly-tier2 --acquire --json > /tmp/tier2.json
+
+      - name: Compare against committed baseline
+        # deploy/bench-baseline.json is a committed, manually-updated file.
+        # This step only ever reads it, never writes it — baseline updates
+        # are a deliberate, reviewed change (a maintainer re-runs the
+        # benchmark and commits a new baseline in its own PR), never an
+        # automatic side effect of a green nightly run.
+        run: |
+          set -euo pipefail
+          threshold=20
+
+          check_tier() {
+            local tier="$1"
+            local result_file="$2"
+
+            local fresh_p50 fresh_p99 baseline_p50 baseline_p99 p99_delta
+            fresh_p50=$(jq -r '.p50_ms' "$result_file")
+            fresh_p99=$(jq -r '.p99_ms' "$result_file")
+            baseline_p50=$(jq -r ".${tier}.p50_ms" deploy/bench-baseline.json)
+            baseline_p99=$(jq -r ".${tier}.p99_ms" deploy/bench-baseline.json)
+
+            p99_delta=$(echo "scale=2; (($fresh_p99 - $baseline_p99) / $baseline_p99) * 100" | bc -l)
+            echo "${tier}: baseline p50=${baseline_p50}ms p99=${baseline_p99}ms | fresh p50=${fresh_p50}ms p99=${fresh_p99}ms | p99 delta=${p99_delta}%"
+
+            if (( $(echo "$p99_delta > $threshold" | bc -l) )); then
+              echo "REGRESSION: ${tier} P99 latency regressed by ${p99_delta}% (baseline ${baseline_p99}ms -> fresh ${fresh_p99}ms), exceeding the ${threshold}% threshold" >&2
+              return 1
+            fi
+            return 0
+          }
+
+          failed=0
+          check_tier tier1 /tmp/tier1.json || failed=1
+          check_tier tier2 /tmp/tier2.json || failed=1
+
+          if [ "$failed" -eq 1 ]; then
+            echo "Benchmark regression detected against deploy/bench-baseline.json — see above." >&2
+            exit 1
+          fi
+          echo "No regression detected against deploy/bench-baseline.json."
+
+      - name: Tear down stack
+        if: always()
+        run: |
+          docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.bench.yml down -v
+          rm -rf deploy/certs
