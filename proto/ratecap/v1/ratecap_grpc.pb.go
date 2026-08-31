@@ -22,6 +22,7 @@ const (
 	RatecapService_CheckRateLimit_FullMethodName     = "/ratecap.v1.RatecapService/CheckRateLimit"
 	RatecapService_ReleaseConcurrency_FullMethodName = "/ratecap.v1.RatecapService/ReleaseConcurrency"
 	RatecapService_SetDynamicLimit_FullMethodName    = "/ratecap.v1.RatecapService/SetDynamicLimit"
+	RatecapService_RefundCost_FullMethodName         = "/ratecap.v1.RatecapService/RefundCost"
 )
 
 // RatecapServiceClient is the client API for RatecapService service.
@@ -31,6 +32,7 @@ type RatecapServiceClient interface {
 	CheckRateLimit(ctx context.Context, in *CheckRateLimitRequest, opts ...grpc.CallOption) (*CheckRateLimitResponse, error)
 	ReleaseConcurrency(ctx context.Context, in *ReleaseConcurrencyRequest, opts ...grpc.CallOption) (*ReleaseConcurrencyResponse, error)
 	SetDynamicLimit(ctx context.Context, in *SetDynamicLimitRequest, opts ...grpc.CallOption) (*SetDynamicLimitResponse, error)
+	RefundCost(ctx context.Context, in *RefundCostRequest, opts ...grpc.CallOption) (*RefundCostResponse, error)
 }
 
 type ratecapServiceClient struct {
@@ -71,6 +73,16 @@ func (c *ratecapServiceClient) SetDynamicLimit(ctx context.Context, in *SetDynam
 	return out, nil
 }
 
+func (c *ratecapServiceClient) RefundCost(ctx context.Context, in *RefundCostRequest, opts ...grpc.CallOption) (*RefundCostResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefundCostResponse)
+	err := c.cc.Invoke(ctx, RatecapService_RefundCost_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RatecapServiceServer is the server API for RatecapService service.
 // All implementations must embed UnimplementedRatecapServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type RatecapServiceServer interface {
 	CheckRateLimit(context.Context, *CheckRateLimitRequest) (*CheckRateLimitResponse, error)
 	ReleaseConcurrency(context.Context, *ReleaseConcurrencyRequest) (*ReleaseConcurrencyResponse, error)
 	SetDynamicLimit(context.Context, *SetDynamicLimitRequest) (*SetDynamicLimitResponse, error)
+	RefundCost(context.Context, *RefundCostRequest) (*RefundCostResponse, error)
 	mustEmbedUnimplementedRatecapServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedRatecapServiceServer) ReleaseConcurrency(context.Context, *Re
 }
 func (UnimplementedRatecapServiceServer) SetDynamicLimit(context.Context, *SetDynamicLimitRequest) (*SetDynamicLimitResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetDynamicLimit not implemented")
+}
+func (UnimplementedRatecapServiceServer) RefundCost(context.Context, *RefundCostRequest) (*RefundCostResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RefundCost not implemented")
 }
 func (UnimplementedRatecapServiceServer) mustEmbedUnimplementedRatecapServiceServer() {}
 func (UnimplementedRatecapServiceServer) testEmbeddedByValue()                        {}
@@ -172,6 +188,24 @@ func _RatecapService_SetDynamicLimit_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RatecapService_RefundCost_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefundCostRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RatecapServiceServer).RefundCost(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RatecapService_RefundCost_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RatecapServiceServer).RefundCost(ctx, req.(*RefundCostRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RatecapService_ServiceDesc is the grpc.ServiceDesc for RatecapService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var RatecapService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetDynamicLimit",
 			Handler:    _RatecapService_SetDynamicLimit_Handler,
+		},
+		{
+			MethodName: "RefundCost",
+			Handler:    _RatecapService_RefundCost_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

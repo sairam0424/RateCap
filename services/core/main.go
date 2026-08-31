@@ -223,7 +223,7 @@ func main() {
 		log.Printf("ratecap-core: mTLS enabled (mode=%s)", tlsMode)
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
-	coreServer := grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, []byte(concurrencySigningKey))
+	coreServer := grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, redisStore, []byte(concurrencySigningKey))
 	ratecapv1.RegisterRatecapServiceServer(grpcServer, coreServer)
 
 	if tlsMode == "permissive" {
