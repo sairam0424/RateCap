@@ -9,6 +9,8 @@ import (
 	"log"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -86,6 +88,11 @@ func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLim
 		priority = limiter.Sheddable
 	}
 
+	// Fixed, small-cardinality label only — mirrors priorityLabel in
+	// services/sidecar/proxy/proxy.go; never req.Key or any other
+	// caller-controlled value (SECURITY.md's decision-log stance).
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("ratecap.priority", priorityAttrLabel(priority)))
+
 	decision, err := s.pipeline.Check(ctx, limiter.Request{
 		Key:              req.Key,
 		Cost:             int(req.Cost),
@@ -159,6 +166,16 @@ func (s *Server) RefundCost(ctx context.Context, req *ratecapv1.RefundCostReques
 func internalError(context string, err error) error {
 	log.Printf("grpcserver: %s: %v", context, err)
 	return status.Error(codes.Internal, "internal error")
+}
+
+// priorityAttrLabel mirrors priorityLabel in
+// services/sidecar/proxy/proxy.go — same two fixed strings, so the
+// ratecap.priority span attribute reads identically on both hops.
+func priorityAttrLabel(p limiter.Priority) string {
+	if p == limiter.Critical {
+		return "critical"
+	}
+	return "sheddable"
 }
 
 func toProtoAction(a limiter.Action) ratecapv1.Action {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -115,5 +116,110 @@ func TestOTelPropagation_ClientAndServerSpansShareTraceID(t *testing.T) {
 	}
 	if !serverSpan.Parent.IsValid() {
 		t.Error("expected server span to have a valid parent span context (propagated over the wire)")
+	}
+}
+
+// spanAttr reads a single attribute value off a recorded span, returning
+// ("", false) if it's absent.
+func spanAttr(s tracetest.SpanStub, key string) (string, bool) {
+	for _, kv := range s.Attributes {
+		if string(kv.Key) == key {
+			return kv.Value.AsString(), true
+		}
+	}
+	return "", false
+}
+
+// TestOTelPropagation_PriorityAttributeOnBothSpans covers Task 3: the
+// sidecar's resolved priority must land on both the outbound client-side
+// span and core's inbound server span, for both priority values. otelgrpc's
+// client stats handler creates its own per-RPC span deep inside
+// grpc.ClientConn.Invoke and never returns that context to caller code
+// (confirmed by reading otelgrpc's clientHandler.TagRPC), so the caller
+// (services/sidecar/proxy/proxy.go, mirrored here) must start its own
+// client-kind span around the call to have anywhere real to put the
+// attribute — this test proves that span, otelgrpc's own nested client
+// span, and core's server span all still share one trace ID end-to-end.
+func TestOTelPropagation_PriorityAttributeOnBothSpans(t *testing.T) {
+	tests := []struct {
+		name     string
+		priority ratecapv1.Priority
+		want     string
+	}{
+		{name: "sheddable", priority: ratecapv1.Priority_SHEDDABLE, want: "sheddable"},
+		{name: "critical", priority: ratecapv1.Priority_CRITICAL, want: "critical"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+			defer func() {
+				if err := tp.Shutdown(context.Background()); err != nil {
+					t.Fatalf("tracer provider shutdown failed: %v", err)
+				}
+			}()
+
+			client, cleanup := startOTelTestServer(t, tp)
+			defer cleanup()
+
+			callCtx, span := tp.Tracer("test").Start(
+				context.Background(), "ratecap.sidecar.check_rate_limit", trace.WithSpanKind(trace.SpanKindClient),
+			)
+			span.SetAttributes(attribute.String("ratecap.priority", tc.want))
+
+			_, err := client.CheckRateLimit(callCtx, &ratecapv1.CheckRateLimitRequest{Key: "user-1", Cost: 1, Priority: tc.priority})
+			span.End()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if err := tp.ForceFlush(context.Background()); err != nil {
+				t.Fatalf("force flush failed: %v", err)
+			}
+
+			spans := exporter.GetSpans()
+			// our wrapping client span + otelgrpc's own client span + the server span
+			if len(spans) != 3 {
+				t.Fatalf("expected exactly 3 spans, got %d: %+v", len(spans), spans)
+			}
+
+			traceID := spans[0].SpanContext.TraceID()
+			var wrapperSpan, serverSpan *tracetest.SpanStub
+			for i := range spans {
+				if spans[i].SpanContext.TraceID() != traceID {
+					t.Errorf("expected all spans to share trace ID %s, got %s for span %q", traceID, spans[i].SpanContext.TraceID(), spans[i].Name)
+				}
+				switch {
+				case spans[i].Name == "ratecap.sidecar.check_rate_limit":
+					wrapperSpan = &spans[i]
+				case spans[i].SpanKind == trace.SpanKindServer:
+					serverSpan = &spans[i]
+				}
+			}
+			if wrapperSpan == nil {
+				t.Fatalf("expected to find the wrapping client span, got: %+v", spans)
+			}
+			if serverSpan == nil {
+				t.Fatalf("expected to find the server span, got: %+v", spans)
+			}
+
+			if got, ok := spanAttr(*wrapperSpan, "ratecap.priority"); !ok || got != tc.want {
+				t.Errorf("client span ratecap.priority = %q (present=%v), want %q", got, ok, tc.want)
+			}
+			if got, ok := spanAttr(*serverSpan, "ratecap.priority"); !ok || got != tc.want {
+				t.Errorf("server span ratecap.priority = %q (present=%v), want %q", got, ok, tc.want)
+			}
+
+			// Global Constraint 5: the caller-controlled key must never leave
+			// the process via a span attribute, on either span.
+			for _, s := range []*tracetest.SpanStub{wrapperSpan, serverSpan} {
+				for _, kv := range s.Attributes {
+					if kv.Value.AsString() == "user-1" {
+						t.Errorf("span %q: found caller-controlled key value on attribute %s", s.Name, kv.Key)
+					}
+				}
+			}
+		})
 	}
 }
