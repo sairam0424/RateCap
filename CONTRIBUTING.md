@@ -30,12 +30,12 @@ done
 ### Test
 
 ```bash
-for m in proto services/core services/sidecar packages/sdks/go; do
+for m in proto services/core services/core/integrationtests services/sidecar packages/sdks/go; do
   (cd "$m" && go test ./... -race)
 done
 ```
 
-`services/core`'s `store` package includes integration tests against a real Redis instance via [testcontainers-go](https://golang.org/x/testcontainers) — Docker must be running locally for those to pass.
+`services/core/integrationtests` is a separate module (kept out of the production `services/core` module so it doesn't carry `testcontainers-go`'s transitive dependency tree) that runs integration tests against real Redis and Toxiproxy instances via [testcontainers-go](https://golang.org/x/testcontainers) — Docker must be running locally for those to pass.
 
 ### Run the end-to-end demo
 

@@ -1,0 +1,33 @@
+version: "2"
+
+# Conservative, high-signal set only — not an exhaustive style-linter
+# pile-on. gofmt already gates formatting in CI; this gate is for real bugs.
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  exclusions:
+    paths:
+      # 100% generated protobuf code, zero hand-written logic (same
+      # reasoning ci.yml already documents for its 0% coverage floor).
+      - ^proto/
+    rules:
+      # Tests intentionally ignore some error returns for brevity (e.g.
+      # deferred Close on a fixture). Only errcheck is relaxed for
+      # _test.go — every other linter still applies to test files.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+# golangci-lint's default issue caps (max-same-issues: 3,
+# max-issues-per-linter: 50) are display truncation, not a smaller finding
+# set — a first real run under the defaults silently hid 14 genuine errcheck
+# findings in the cli module alone. Disable both so the gate is red until
+# every real finding is addressed, never green from truncation.
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0

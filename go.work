@@ -8,5 +8,6 @@ use (
 	./cli
 	./deploy/sampleapp
 	./packages/sdks/go
+	./services/core/integrationtests
 	./services/sidecar
 )

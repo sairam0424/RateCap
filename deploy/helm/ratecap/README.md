@@ -15,20 +15,61 @@ kind load docker-image ratecap-core:latest ratecap-sidecar:latest ratecap-sample
 
 (all 3 `docker build` commands run from the repo root, matching `deploy/docker-compose.yml`'s existing `build: context: ..` convention)
 
-## Required: create the shared-secret Secret before installing
+## Regenerating the embedded config
 
-This chart never generates or stores a secret value — you must create it yourself first:
+`values.yaml`'s `config.yaml` block (between the `# BEGIN GENERATED CONFIG` / `# END GENERATED CONFIG` markers) is generated from `deploy/ratecap.yaml`, not hand-maintained — `deploy/ratecap.yaml` is the single source of truth for shipped defaults. Do not hand-edit the content between those markers; it will be overwritten the next time the generator runs, and CI's `helm-lint` job fails the build if the two ever diverge.
+
+After any edit to `deploy/ratecap.yaml`, regenerate the chart's copy and commit the resulting `values.yaml` diff:
+
+```bash
+./deploy/helm/ratecap/generate-config.sh
+git diff deploy/helm/ratecap/values.yaml
+```
+
+## Required secrets: create before installing
+
+This chart never generates or stores a secret value — you must create these yourself first, out-of-band, and point the chart at them via `existingSecretName`.
+
+### `sharedSecret` (required)
+
+Authenticates sidecar→core gRPC traffic (`x-ratecap-shared-secret` metadata). Omitting this causes the sidecar and core pods to fail on their very first request to each other.
 
 ```bash
 kubectl create secret generic ratecap-shared-secret \
   --from-literal=shared-secret=<your-secret-value>
 ```
 
-Then install with:
+### `concurrencySigningKey` (required)
+
+Signs and verifies Tier 2 concurrency tokens — consumed only by `core` (sidecar never needs it). **Omitting this causes the `core` pod to fail to start with `CreateContainerConfigError`**, because `core.yaml`'s `RATECAP_CONCURRENCY_SIGNING_KEY` env var is sourced from this Secret via `secretKeyRef`, and Kubernetes refuses to start a container when a referenced Secret or key doesn't exist yet — the pod will sit in `CreateContainerConfigError` indefinitely rather than crash-looping, since there's nothing to retry until the Secret is created.
+
+```bash
+kubectl create secret generic ratecap-concurrency-signing-key \
+  --from-literal=signing-key=<your-signing-key>
+```
+
+Then install with both secrets wired in:
 
 ```bash
 helm install my-ratecap deploy/helm/ratecap \
-  --set sharedSecret.existingSecretName=ratecap-shared-secret
+  --set sharedSecret.existingSecretName=ratecap-shared-secret \
+  --set concurrencySigningKey.existingSecretName=ratecap-concurrency-signing-key
+```
+
+### `adminSecret` (optional)
+
+Gates the sidecar's `/admin/set-limit` incident-response lever — deliberately separate from `sharedSecret`, see `SECURITY.md`. Only needed if you use that endpoint.
+
+```bash
+kubectl create secret generic ratecap-admin-secret \
+  --from-literal=admin-secret=<your-admin-secret-value>
+```
+
+```bash
+helm install my-ratecap deploy/helm/ratecap \
+  --set sharedSecret.existingSecretName=ratecap-shared-secret \
+  --set concurrencySigningKey.existingSecretName=ratecap-concurrency-signing-key \
+  --set adminSecret.existingSecretName=ratecap-admin-secret
 ```
 
 ## Optional: enabling mTLS
@@ -45,6 +86,7 @@ kubectl create secret generic ratecap-sidecar-tls \
 ```bash
 helm install my-ratecap deploy/helm/ratecap \
   --set sharedSecret.existingSecretName=ratecap-shared-secret \
+  --set concurrencySigningKey.existingSecretName=ratecap-concurrency-signing-key \
   --set tls.enabled=true \
   --set tls.core.existingSecretName=ratecap-core-tls \
   --set tls.sidecar.existingSecretName=ratecap-sidecar-tls

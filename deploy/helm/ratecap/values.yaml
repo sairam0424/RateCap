@@ -40,6 +40,7 @@ sampleapp:
 # config.yaml is the content of ratecap.yaml, mounted into core via a
 # ConfigMap. Defaults mirror deploy/ratecap.yaml (the docker-compose demo's
 # config) exactly, so a chart install behaves the same way out of the box.
+# BEGIN GENERATED CONFIG (see generate-config.sh) — do not hand-edit between these markers
 config:
   yaml: |
     sync_rate: 5
@@ -52,11 +53,17 @@ config:
         default_max_concurrent: 3
         max_request_duration_ms: 30000
         shadow_mode: false
+        # Bounded queueing (v2 Phase 3) — off by default, uncomment to enable:
+        # queueing_enabled: true
+        # max_backlog: 20
+        # max_queue_wait_ms: 2000
+        # poll_interval_ms: 25
       fleet_shedder:
         default_max_concurrent: 5
         reserved_critical_pct: 40
         max_request_duration_ms: 30000
         shadow_mode: false
+# END GENERATED CONFIG
 
 # sharedSecret is BYO-only: the chart never generates or stores a secret
 # value. Create the Secret out-of-band first, e.g.:

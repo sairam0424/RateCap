@@ -53,7 +53,7 @@ func newAdminSetLimitCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("calling sidecar: %w", err)
 			}
-			defer resp.Body.Close()
+			defer resp.Body.Close() //nolint:errcheck // response body already fully read below; a Close error carries no new information
 
 			respBody, err := io.ReadAll(resp.Body)
 			if err != nil {
@@ -63,7 +63,9 @@ func newAdminSetLimitCmd() *cobra.Command {
 				return fmt.Errorf("sidecar returned %d: %s", resp.StatusCode, respBody)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\n", respBody)
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\n", respBody); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

@@ -1,15 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/ratecap/cli/cmd"
 )
 
 func main() {
-	if err := cmd.NewRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	os.Exit(cmd.Run(os.Args[1:], os.Stdout, os.Stderr))
 }

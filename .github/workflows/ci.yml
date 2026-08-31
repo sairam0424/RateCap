@@ -73,6 +73,26 @@ jobs:
             exit 1
           fi
 
+  core-integration-tests:
+    # testcontainers-go-based Redis/Toxiproxy integration tests, isolated
+    # into their own module (services/core/integrationtests) so the
+    # production services/core module doesn't carry the moby/containerd/
+    # gopsutil transitive tree. Docker is already available on ubuntu-latest
+    # runners (the docker-build job below proves this), so no new CI
+    # infrastructure is needed — just this dedicated step. No coverage floor:
+    # this is thin integration glue, not unit-level logic.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+
+      - name: Test
+        working-directory: services/core/integrationtests
+        run: go test ./... -race
+
   gofmt:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +110,37 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+
+  golangci-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same module directories as build-and-test's matrix, plus
+        # services/core/integrationtests (added by the testcontainers-go
+        # module split — not part of build-and-test's own matrix since it has
+        # no coverage floor, but it's still a real go.mod that needs linting
+        # like every other one). Each is a separate go.mod and golangci-lint
+        # (like go build/test) must be run from inside each one individually.
+        module:
+          - proto
+          - services/core
+          - services/core/integrationtests
+          - services/sidecar
+          - packages/sdks/go
+          - deploy/sampleapp
+          - cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          working-directory: ${{ matrix.module }}
 
   python-sdk:
     runs-on: ubuntu-latest
@@ -114,6 +165,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      # deploy/ratecap.yaml is the single source of truth for shipped
+      # defaults; values.yaml's embedded config.yaml block is generated from
+      # it. Fails the same way `gofmt -l .` does if the two ever diverge.
+      - name: Check embedded config is not stale
+        run: |
+          ./deploy/helm/ratecap/generate-config.sh
+          git diff --exit-code deploy/helm/ratecap/values.yaml
 
       - name: Lint
         run: helm lint deploy/helm/ratecap
