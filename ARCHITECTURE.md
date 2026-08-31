@@ -86,7 +86,7 @@ On the wire, `Priority`'s proto zero-value is `PRIORITY_UNSPECIFIED` (0), distin
 ## Testing strategy
 
 - **Unit tests** for pure decision logic (no Redis, no network) — e.g. `TokenBucketLimiter` tested against a fake `checker`.
-- **Integration tests** against a real Redis via [testcontainers-go](https://github.com/testcontainers/testcontainers-go), proving Lua-script atomicity under concurrent load (`services/core/store/redis_test.go`).
+- **Integration tests** against a real Redis via [testcontainers-go](https://github.com/testcontainers/testcontainers-go), proving Lua-script atomicity under concurrent load (`services/core/integrationtests/store/redis_test.go`, in the separate `services/core/integrationtests` module).
 - **Race-detector runs** (`go test -race`) on every module — this is how the `Reconfigure` data race was caught.
 - **End-to-end verification** via the `deploy/` docker-compose stack: a real SDK call through the real sidecar, real gRPC to a real core, hitting real Redis — proving the full chain works, not just its parts in isolation.
 
@@ -121,7 +121,7 @@ When a tier's backing Redis call errors (timeout, connection refused, or any oth
 - **Tier 2 (Concurrent Requests Limiter) and Tier 3 (Fleet Usage Load Shedder) fail CLOSED.** The gRPC call returns `codes.Internal`, which the sidecar surfaces as an HTTP 500 to the caller. Both tiers exist specifically to bound concurrent resource usage; failing open would remove that bound during exactly the outage when it matters most.
 - This is a **per-tier** contract, not a whole-pipeline guarantee: `Pipeline.Check` still runs every tier in order, so a total Redis outage still surfaces as a 500 overall once the request reaches Tier 2 or Tier 3, even though Tier 1 itself failed open along the way.
 
-Enforced by real network-fault-injection tests (Toxiproxy, not mocks) in `services/core/reliability/redis_failure_test.go` — `TestTier1_RedisUnavailable_FailsOpen`, `TestTier2_RedisUnavailable_FailsClosed`, `TestTier3_RedisUnavailable_FailsClosed`.
+Enforced by real network-fault-injection tests (Toxiproxy, not mocks) in `services/core/integrationtests/reliability/redis_failure_test.go` — `TestTier1_RedisUnavailable_FailsOpen`, `TestTier2_RedisUnavailable_FailsClosed`, `TestTier3_RedisUnavailable_FailsClosed`.
 
 ### Health checks
 

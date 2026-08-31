@@ -8,8 +8,8 @@ RateCap: a hybrid core-engine + sidecar rate-limiter/load-shedder, faithfully re
 
 ## Build & test
 
-- **build all modules**: `for m in proto services/core services/sidecar packages/sdks/go cli deploy/sampleapp; do (cd "$m" && go build ./...); done` — each module is a separate `go.mod` and must be built individually (`cli` is easy to forget here — it's in CI's build matrix but wasn't in this list before)
-- **test all Go modules**: `for m in proto services/core services/sidecar packages/sdks/go cli; do (cd "$m" && go test ./... -race); done` — `-race` matches CI and CONTRIBUTING.md; a real data race in `TokenBucketLimiter.Reconfigure` was caught only this way. `services/core`'s Redis integration tests need Docker running locally. Excludes `deploy/sampleapp` (demo binary, no tests).
+- **build all modules**: `for m in proto services/core services/core/integrationtests services/sidecar packages/sdks/go cli deploy/sampleapp; do (cd "$m" && go build ./...); done` — each module is a separate `go.mod` and must be built individually (`cli` is easy to forget here — it's in CI's build matrix but wasn't in this list before)
+- **test all Go modules**: `for m in proto services/core services/core/integrationtests services/sidecar packages/sdks/go cli; do (cd "$m" && go test ./... -race); done` — `-race` matches CI and CONTRIBUTING.md; a real data race in `TokenBucketLimiter.Reconfigure` was caught only this way. `services/core/integrationtests`'s testcontainers-based Redis/Toxiproxy tests need Docker running locally — they're isolated into their own module precisely so `services/core` itself doesn't carry the `testcontainers-go` transitive dependency tree into production. Excludes `deploy/sampleapp` (demo binary, no tests).
 - **test one module**: `cd services/core && go test ./... -race -v`
 - **format check**: `gofmt -l .` must print nothing — this is a CI gate; there is no golangci-lint config in this repo
 - **Python SDK** (`packages/sdks/python` — not a Go module, not in `go.work`): `pip install -e . && python -m unittest discover -s tests -v`

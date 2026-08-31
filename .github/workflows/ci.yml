@@ -73,6 +73,26 @@ jobs:
             exit 1
           fi
 
+  core-integration-tests:
+    # testcontainers-go-based Redis/Toxiproxy integration tests, isolated
+    # into their own module (services/core/integrationtests) so the
+    # production services/core module doesn't carry the moby/containerd/
+    # gopsutil transitive tree. Docker is already available on ubuntu-latest
+    # runners (the docker-build job below proves this), so no new CI
+    # infrastructure is needed — just this dedicated step. No coverage floor:
+    # this is thin integration glue, not unit-level logic.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+
+      - name: Test
+        working-directory: services/core/integrationtests
+        run: go test ./... -race
+
   gofmt:
     runs-on: ubuntu-latest
     steps:
