@@ -22,6 +22,21 @@ type ratecapClient interface {
 	CheckRateLimit(ctx context.Context, in *ratecapv1.CheckRateLimitRequest, opts ...grpc.CallOption) (*ratecapv1.CheckRateLimitResponse, error)
 }
 
+func resolveCost(raw string) int {
+	if raw == "" {
+		return 1
+	}
+	// ParseInt with bitSize=32 (not Atoi) so an out-of-int32-range value is
+	// rejected here, not silently wrapped to a negative Cost by the int32()
+	// cast at the call site.
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed <= 0 {
+		log.Printf("sidecar: /check: cost=%q is invalid, defaulting to 1", raw)
+		return 1
+	}
+	return int(parsed)
+}
+
 type Handler struct {
 	client          ratecapClient
 	defaultPriority Priority
@@ -83,7 +98,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.client.CheckRateLimit(r.Context(), &ratecapv1.CheckRateLimitRequest{
 		Key:              key,
-		Cost:             1,
+		Cost:             int32(resolveCost(r.URL.Query().Get("cost"))),
 		SkipReservations: skipReservations,
 		Priority:         protoPriority,
 	})

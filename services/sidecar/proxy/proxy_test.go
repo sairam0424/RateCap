@@ -703,3 +703,73 @@ func TestReleaseHandler_ServeHTTP_RejectsNonPOSTMethod(t *testing.T) {
 		t.Errorf("expected 405, got %d", rec.Code)
 	}
 }
+
+func TestServeHTTP_UsesCostQueryParamWhenPresent(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&cost=5", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq.Cost != 5 {
+		t.Errorf("expected Cost=5 forwarded to core, got %d", client.lastReq.Cost)
+	}
+}
+
+func TestServeHTTP_DefaultsCostToOneWhenAbsent(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq.Cost != 1 {
+		t.Errorf("expected default Cost=1, got %d", client.lastReq.Cost)
+	}
+}
+
+func TestServeHTTP_InvalidCostFallsBackToOne(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&cost=not-a-number", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq.Cost != 1 {
+		t.Errorf("expected fallback Cost=1 for an unparseable value, got %d", client.lastReq.Cost)
+	}
+}
+
+func TestServeHTTP_NonPositiveCostFallsBackToOne(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&cost=0", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq.Cost != 1 {
+		t.Errorf("expected fallback Cost=1 for a non-positive value, got %d", client.lastReq.Cost)
+	}
+}
+
+func TestServeHTTP_CostOverflowingInt32FallsBackToOne(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1&cost=2147483648", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq.Cost != 1 {
+		t.Errorf("expected fallback Cost=1 for a value overflowing int32 (would otherwise wrap negative), got %d", client.lastReq.Cost)
+	}
+}
