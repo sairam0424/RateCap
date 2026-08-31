@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -288,6 +289,7 @@ func main() {
 
 	serverOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 	if tlsCertPath != "" && tlsMode != "permissive" {
 		tlsConf, stopCertWatch, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
@@ -325,6 +327,7 @@ func main() {
 		tlsServerOpts := []grpc.ServerOption{
 			grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor(sharedSecret), coremetrics.UnaryServerInterceptor()),
 			grpc.Creds(credentials.NewTLS(permissiveConf)),
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		}
 		tlsGrpcServer := grpc.NewServer(tlsServerOpts...)
 		ratecapv1.RegisterRatecapServiceServer(tlsGrpcServer, coreServer)

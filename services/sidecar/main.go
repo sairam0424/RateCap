@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
@@ -221,6 +222,7 @@ func main() {
 		coreAddr,
 		grpc.WithTransportCredentials(transportCreds),
 		grpc.WithUnaryInterceptor(auth.UnaryClientInterceptor(sharedSecret)),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
 		log.Fatalf("failed to connect to ratecap-core at %s: %v", coreAddr, err)
