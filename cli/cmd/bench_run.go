@@ -70,7 +70,9 @@ func (c *benchCounters) reportSnapshot(w io.Writer, elapsed time.Duration) {
 	p50 := c.hist.Percentile(0.50)
 	p99 := c.hist.Percentile(0.99)
 	c.hist.Reset()
-	fmt.Fprintf(w, "[%ds] accepted=%d rejected=%d errored=%d p50=%.2fms p99=%.2fms\n",
+	// Best-effort: a transient write failure on one progress line must never
+	// abort a multi-hour --duration soak run.
+	fmt.Fprintf(w, "[%ds] accepted=%d rejected=%d errored=%d p50=%.2fms p99=%.2fms\n", //nolint:errcheck // see comment above
 		int(elapsed.Seconds()), accepted, rejected, errored, p50, p99)
 }
 
@@ -130,13 +132,25 @@ func newBenchRunCmd() *cobra.Command {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				return enc.Encode(result)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Total requests: %d\n", result.TotalRequests)
-			fmt.Fprintf(cmd.OutOrStdout(), "Accepted: %d  Rejected: %d  Errored: %d\n", result.Accepted, result.Rejected, result.Errored)
-			fmt.Fprintf(cmd.OutOrStdout(), "Elapsed: %dms\n", result.ElapsedMs)
-			fmt.Fprintf(cmd.OutOrStdout(), "Throughput: %.1f req/s\n", result.ThroughputRPS)
-			fmt.Fprintf(cmd.OutOrStdout(), "P50: %.2fms  P99: %.2fms  P99.9: %.2fms (accepted requests only)\n", result.P50Ms, result.P99Ms, result.P999Ms)
-			printResourceSection(cmd.OutOrStdout(), "before", result.ResourceBefore)
-			printResourceSection(cmd.OutOrStdout(), "after", result.ResourceAfter)
+			out := cmd.OutOrStdout()
+			summaryLines := []string{
+				fmt.Sprintf("Total requests: %d\n", result.TotalRequests),
+				fmt.Sprintf("Accepted: %d  Rejected: %d  Errored: %d\n", result.Accepted, result.Rejected, result.Errored),
+				fmt.Sprintf("Elapsed: %dms\n", result.ElapsedMs),
+				fmt.Sprintf("Throughput: %.1f req/s\n", result.ThroughputRPS),
+				fmt.Sprintf("P50: %.2fms  P99: %.2fms  P99.9: %.2fms (accepted requests only)\n", result.P50Ms, result.P99Ms, result.P999Ms),
+			}
+			for _, line := range summaryLines {
+				if _, err := io.WriteString(out, line); err != nil {
+					return err
+				}
+			}
+			if err := printResourceSection(out, "before", result.ResourceBefore); err != nil {
+				return err
+			}
+			if err := printResourceSection(out, "after", result.ResourceAfter); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -160,17 +174,24 @@ func newBenchRunCmd() *cobra.Command {
 // section only when the snapshot actually captured something — an empty
 // snapshot (capture disabled, or both docker/redis-cli unavailable) prints
 // nothing.
-func printResourceSection(w io.Writer, label string, snap *ResourceSnapshot) {
+func printResourceSection(w io.Writer, label string, snap *ResourceSnapshot) error {
 	if isSnapshotEmpty(snap) {
-		return
+		return nil
 	}
-	fmt.Fprintf(w, "Resources (%s):\n", label)
+	if _, err := fmt.Fprintf(w, "Resources (%s):\n", label); err != nil {
+		return err
+	}
 	if snap.DockerStats != "" {
-		fmt.Fprintf(w, "  docker stats: %s\n", snap.DockerStats)
+		if _, err := fmt.Fprintf(w, "  docker stats: %s\n", snap.DockerStats); err != nil {
+			return err
+		}
 	}
 	if snap.RedisInfo != "" {
-		fmt.Fprintf(w, "  redis info: %s\n", snap.RedisInfo)
+		if _, err := fmt.Fprintf(w, "  redis info: %s\n", snap.RedisInfo); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // runBench drives load against the sidecar and returns the cumulative
@@ -199,7 +220,10 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 				kind = "rejected"
 			}
 			if err == nil {
-				ticket.Release(ctx)
+				// Best-effort per Ticket.Release's own godoc; this request's
+				// outcome is already recorded via kind above, and a release
+				// failure doesn't change what the benchmark measured.
+				ticket.Release(ctx) //nolint:errcheck // see comment above
 			}
 		} else {
 			allowed, _, err := client.Allow(ctx, key)

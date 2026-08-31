@@ -213,7 +213,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to ratecap-core at %s: %v", coreAddr, err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // process is exiting either way; a close error on this long-lived client conn has nothing left to act on
 
 	client := ratecapv1.NewRatecapServiceClient(conn)
 

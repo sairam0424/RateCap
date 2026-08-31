@@ -85,7 +85,7 @@ func (c *Client) Allow(ctx context.Context, key string, opts ...CheckOption) (al
 	if err != nil {
 		return false, 0, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // response body is never read further here; a Close error carries no new information beyond the already-inspected status code/headers
 
 	if resp.StatusCode == http.StatusOK {
 		return true, 0, nil
@@ -143,7 +143,7 @@ func (t *Ticket) releaseOne(ctx context.Context, r reservation) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // response body is never read further here; a Close error carries no new information beyond the already-inspected status code/headers
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ratecap: release failed with status %d", resp.StatusCode)
@@ -171,7 +171,7 @@ func (t *Ticket) Refund(ctx context.Context, refundAmount int) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // response body is never read further here; a Close error carries no new information beyond the already-inspected status code/headers
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ratecap: refund failed with status %d", resp.StatusCode)
@@ -194,7 +194,7 @@ func (c *Client) Acquire(ctx context.Context, key string, opts ...CheckOption) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // response body is never read further here; a Close error carries no new information beyond the already-inspected status code/headers
 
 	var reservations []reservation
 	for i := 0; ; i++ {
