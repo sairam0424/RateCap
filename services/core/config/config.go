@@ -34,8 +34,7 @@ type FleetShedderConfig struct {
 }
 
 type Config struct {
-	SyncRate int `yaml:"sync_rate"`
-	Tiers    struct {
+	Tiers struct {
 		RateLimiter        RateLimiterConfig        `yaml:"rate_limiter"`
 		ConcurrencyLimiter ConcurrencyLimiterConfig `yaml:"concurrency_limiter"`
 		FleetShedder       FleetShedderConfig       `yaml:"fleet_shedder"`

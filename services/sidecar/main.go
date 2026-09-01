@@ -46,20 +46,23 @@ func newHealthzHandler(conn *grpc.ClientConn) http.HandlerFunc {
 	}
 }
 
-// newTopMux keeps /metrics and /healthz off the same rate limiter that
-// throttles real traffic on /check and /release — a Prometheus scrape must
-// never compete with production requests for the same token bucket, exactly
-// when an operator needs visibility most (e.g. during a real overload event
-// this limiter is throttling).
+// newTopMux runs every route — including /metrics, /healthz, and
+// /admin/set-limit, not just /check and /release — through the same shared
+// limiter. This is the process-wide defensive limiter CLAUDE.md documents
+// as living outside the 4 tiers on purpose: a flood aimed at any route on
+// this mux, not just the proxied ones, must be bounded. All five
+// registrations below share the one *ratelimit.Limiter passed in, so they
+// all draw from the same token bucket rather than each getting its own
+// independent allowance.
 func newTopMux(protected http.Handler, limiter *ratelimit.Limiter, metricsHandler http.Handler, healthz http.HandlerFunc, adminHandler http.Handler) *http.ServeMux {
 	throttled := ratelimit.Middleware(limiter, protected)
 
 	mux := http.NewServeMux()
 	mux.Handle("/check", throttled)
 	mux.Handle("/release", throttled)
-	mux.Handle("/metrics", metricsHandler)
-	mux.HandleFunc("/healthz", healthz)
-	mux.Handle("/admin/set-limit", adminHandler)
+	mux.Handle("/metrics", ratelimit.Middleware(limiter, metricsHandler))
+	mux.Handle("/healthz", ratelimit.Middleware(limiter, healthz))
+	mux.Handle("/admin/set-limit", ratelimit.Middleware(limiter, adminHandler))
 	return mux
 }
 
