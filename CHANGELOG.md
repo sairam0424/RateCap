@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-09-01 — Signed, Multi-Platform CLI Release Binaries
+
+Minor release: closes two gaps found while investigating OpenSSF Scorecard's live **Signed-Releases: 0/10** score (`docs/superpowers/plans/2026-09-01-signed-cli-release-binaries.md`) — SBOMs and provenance were already attached to/attesting the container images and Helm chart, but nothing downloadable was ever attached to a GitHub Release itself, which is specifically what that check looks for; separately, `ratecapctl` had no downloadable binary at all (`go install`/build-from-source only), a real discoverability gap independent of Scorecard. Both are fixed by the same feature: cross-platform, signed `ratecapctl` release binaries.
+
+### Added
+
+- `.github/workflows/publish-release.yml`: new `publish-cli-binaries` job (same `v*` tag trigger) hand-rolls a `GOOS`/`GOARCH` build matrix — `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`, `windows/amd64` (`windows/arm64` intentionally excluded: no first-party consumer) — using the same `-ldflags "-X .../cmd.Version=..."` pattern already documented in `README.md`. Generates a `checksums.txt` (SHA-256) covering all 5 binaries, signs it keylessly with `cosign sign-blob --bundle`, attests build provenance (`actions/attest-build-provenance`) over the binaries plus `checksums.txt`, and uploads all of it (5 binaries, `checksums.txt`, `checksums.txt.bundle`) as GitHub Release assets via `gh release upload` — least-privilege `permissions:` scoped to just this job (`contents: write`, `id-token: write`, `attestations: write`), matching the existing `publish-images`/`publish-helm-chart` per-job pattern.
+- `README.md`: "Downloading a release" (which platform/arch asset to grab, `chmod +x`) and "Verifying a release" (copy-pasteable `cosign verify-blob`/`gh attestation verify` commands, both dry-run against placeholder artifacts to confirm flag syntax before being committed to the doc).
+
+The live Scorecard re-check for the Signed-Releases metric happens after this ships as the real `v2.12.0` tag — not claimed as confirmed here.
+
 ## [python-sdk-v0.1.0] — 2026-09-01 — Python SDK: First PyPI Release
 
 `packages/sdks/python` published to PyPI for the first time (`pip install ratecap`), via `.github/workflows/publish-python-sdk.yml`'s PyPI Trusted Publisher (OIDC) flow — no `PYPI_API_TOKEN` secret involved. This SDK is versioned independently of the main `vX.Y.Z` releases (its own `python-sdk-vX.Y.Z` tag series, tracking `packages/sdks/python/pyproject.toml`'s own version), since it ships on its own cadence rather than RateCap's server/CLI release cycle. Verified end-to-end: real release files on PyPI, `pip install ratecap` in a fresh virtualenv, `Client`/`Ticket`/`AllowResult`/`estimate_llm_cost` all importable.
