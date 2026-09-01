@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.12.2] — 2026-09-01 — Fix Helm Chart's Unqualified Image References
+
+Patch: Artifact Hub emailed a scan failure for the `ratecap` chart (`error scanning image ratecap-core:latest: image not found`). Root cause was more than cosmetic: `deploy/helm/ratecap/values.yaml`'s `core`/`sidecar`/`sampleapp` image repositories were bare names (`ratecap-core`, etc.) with no registry — a deliberate choice at the chart's original design time (`docs/superpowers/specs/2026-07-19-v2-phase-4c-helm-chart-design.md` §2: "registry-agnostic chart... publishing it as an indexed repo is a future concern, not part of this sub-project"). That future concern shipped in v2.11.0 (real GHCR images, real OCI chart publish, real Artifact Hub listing) but `values.yaml`'s defaults were never updated to match, so an unqualified image name resolves against Docker Hub by default — both for Kubernetes' own image pull and for Artifact Hub's scanner — where these images have never existed. **Any real user running `helm install ratecap oci://ghcr.io/sairam0424/charts/ratecap` with default values would have hit `ImagePullBackOff`**, not just Artifact Hub's scan; no CI job ever caught this because `helm-lint` only lints/templates (never pulls images) and `e2e-smoke` deploys via `docker-compose`, entirely bypassing this chart.
+
+### Fixed
+
+- `deploy/helm/ratecap/values.yaml`: `core`/`sidecar`/`sampleapp` image repositories now fully qualified (`ghcr.io/sairam0424/ratecap-{core,sidecar,sampleapp}`), matching exactly what `publish-release.yml` actually publishes. `redis`'s image was already correctly a real Docker Hub image and is unchanged.
+- `deploy/helm/ratecap/Chart.yaml`: bumped `version` (0.1.0 → 0.1.1, never previously bumped since the chart's creation) and `appVersion` (2.11.0 → 2.12.1, was one release stale) — a chart `version` bump is required for the OCI push to actually produce a new, distinguishable artifact Artifact Hub will re-scan; pushing identical chart content under the same version does not trigger a fresh scan.
+- `deploy/helm/ratecap/README.md`: updated the `kind load docker-image` local-testing instructions to tag locally-built images under the same fully-qualified names as the new defaults, so local `kind` testing keeps working with zero `--set` overrides.
+
+### Verification
+
+`helm lint`/`helm template` (both the default and `sampleapp.enabled=true` cases) confirm rendered manifests reference the fully-qualified names; `docker manifest inspect` confirms all three images are genuinely pullable at those exact references today, not just correctly-formatted strings.
+
 ## [2.12.1] — 2026-09-01 — Fix Signed-Releases Detection
 
 Patch: the live Scorecard re-check for v2.12.0 came back with **Signed-Releases still 0/10**. Root cause, confirmed directly against `ossf/scorecard`'s own source (`probes/releasesAreSigned`, `probes/releasesHaveProvenance`): the check is a plain filename-suffix probe over GitHub Release assets — it only recognizes `.asc`/`.minisig`/`.sig`/`.sign`/`.sigstore`/`.sigstore.json` as signatures and `.intoto.jsonl` as provenance. v2.12.0's `checksums.txt.bundle` (cosign's modern bundle format) and the GitHub Attestations API (not a release asset at all) are both genuinely valid signing/provenance mechanisms, but neither matches a suffix the probe checks for, so the score didn't move despite the artifacts being real and verifiable.
