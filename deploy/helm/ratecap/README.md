@@ -92,6 +92,23 @@ helm install my-ratecap deploy/helm/ratecap \
   --set tls.sidecar.existingSecretName=ratecap-sidecar-tls
 ```
 
+### `tls.mode`: `strict` (default) vs `permissive`
+
+`tls.mode` is wired straight through to `RATECAP_TLS_MODE` on `core` (only takes effect when `tls.enabled=true`) and mirrors `core`'s own two-listener behavior — see `ARCHITECTURE.md`'s mTLS migration section for the full rationale:
+
+- `strict` (default) — the existing, single all-TLS listener on `core.grpcPort`. This is this chart's original `tls.enabled=true` behavior, unchanged.
+- `permissive` — a transitional mode for migrating a fleet of sidecars one at a time. `core` keeps its plaintext listener running on `core.grpcPort` **and** adds a second, additive TLS listener on `:9443` (`ClientAuth: VerifyClientCertIfGiven`). This chart's `NetworkPolicy` (when `networkPolicy.enabled=true`) only opens port `9443` in this mode, since that's the only mode in which `core` actually listens on it.
+
+```bash
+helm install my-ratecap deploy/helm/ratecap \
+  --set sharedSecret.existingSecretName=ratecap-shared-secret \
+  --set concurrencySigningKey.existingSecretName=ratecap-concurrency-signing-key \
+  --set tls.enabled=true \
+  --set tls.mode=permissive \
+  --set tls.core.existingSecretName=ratecap-core-tls \
+  --set tls.sidecar.existingSecretName=ratecap-sidecar-tls
+```
+
 ### ⚠️ Certificate `subjectAltName` must match your release's actual Service names — do NOT reuse `deploy/generate-demo-certs.sh`'s output as-is
 
 `deploy/generate-demo-certs.sh` (used by the docker-compose demo) generates certs with `subjectAltName=DNS:core` / `DNS:sidecar`, matching compose's static service names. This chart's Kubernetes Service names are release-name-prefixed instead — e.g. installing as `helm install my-ratecap ...` produces Services named `my-ratecap-core` and `my-ratecap-sidecar`, not `core`/`sidecar`.

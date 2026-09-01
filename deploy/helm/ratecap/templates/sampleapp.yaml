@@ -17,6 +17,13 @@ spec:
         - name: sampleapp
           image: "{{ .Values.sampleapp.image.repository }}:{{ .Values.sampleapp.image.tag }}"
           imagePullPolicy: {{ .Values.sampleapp.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.sampleapp.resources.requests.cpu }}
+              memory: {{ .Values.sampleapp.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.sampleapp.resources.limits.cpu }}
+              memory: {{ .Values.sampleapp.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.sampleapp.port }}
           env:

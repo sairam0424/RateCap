@@ -42,6 +42,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Explicit, not incidental: an empty h.secret (RATECAP_ADMIN_SECRET
+	// unset — a supported, documented configuration) must disable this
+	// endpoint outright. Rejecting here doesn't depend on how the
+	// comparison below happens to behave against an empty secret — a
+	// future change to that comparison must not be able to silently
+	// reopen this gate.
+	if h.secret == "" {
+		http.Error(w, "admin endpoint disabled: no admin secret configured", http.StatusServiceUnavailable)
+		return
+	}
+
 	provided := r.Header.Get("X-RateCap-Admin-Secret")
 	if provided == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(h.secret)) != 1 {
 		log.Printf("sidecar: /admin/set-limit: rejected request with missing/invalid admin secret")

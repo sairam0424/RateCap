@@ -253,6 +253,36 @@ func TestCheckRateLimit_UnspecifiedPriorityMapsToSheddable(t *testing.T) {
 	}
 }
 
+func TestCheckRateLimit_RejectsNonPositiveCost(t *testing.T) {
+	tests := []struct {
+		name string
+		cost int32
+	}{
+		{name: "zero", cost: 0},
+		{name: "negative", cost: -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fl := &fakeLimiter{decision: limiter.Decision{Action: limiter.ALLOW}}
+			s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)
+
+			_, err := s.CheckRateLimit(context.Background(), &ratecapv1.CheckRateLimitRequest{
+				Key:  "user-1",
+				Cost: tt.cost,
+			})
+			if err == nil {
+				t.Fatalf("expected an error for Cost=%d, got nil", tt.cost)
+			}
+			if status.Code(err) != codes.InvalidArgument {
+				t.Errorf("expected codes.InvalidArgument, got %v", status.Code(err))
+			}
+			if fl.lastReq != (limiter.Request{}) {
+				t.Errorf("expected the pipeline to never be reached for Cost=%d, but it was called with %+v", tt.cost, fl.lastReq)
+			}
+		})
+	}
+}
+
 func TestCheckRateLimit_SanitizesStoreError(t *testing.T) {
 	fl := &fakeLimiter{err: errors.New("redis: unexpected type *redis.StatusCmd for result")}
 	s := grpcserver.NewServer(limiter.NewPipeline(fl), &fakeReleaser{}, &fakeRateLimiter{}, &fakeFleetShedder{}, &fakeRefundStore{}, testSigningKey)

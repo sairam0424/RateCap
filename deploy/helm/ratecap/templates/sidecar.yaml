@@ -16,6 +16,13 @@ spec:
         - name: sidecar
           image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.sidecar.resources.requests.cpu }}
+              memory: {{ .Values.sidecar.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.sidecar.resources.limits.cpu }}
+              memory: {{ .Values.sidecar.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.sidecar.port }}
           env:
@@ -30,11 +37,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.sharedSecret.existingSecretName }}
                   key: {{ .Values.sharedSecret.existingSecretKey }}
+            {{- if .Values.adminSecret.existingSecretName }}
             - name: RATECAP_ADMIN_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.adminSecret.existingSecretName }}
                   key: {{ .Values.adminSecret.existingSecretKey }}
+            {{- end }}
             {{- if .Values.tls.enabled }}
             - name: RATECAP_TLS_CERT_PATH
               value: /etc/ratecap/certs/tls.crt

@@ -10,6 +10,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Publishing `packages/sdks/python` to PyPI: `.github/workflows/publish-python-sdk.yml` and its PyPI Trusted Publisher (OIDC) setup are ready, but no `python-sdk-v*` tag has been pushed yet. Before the first one is, a repo admin must complete the one-time PyPI pending-publisher registration documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — the first tag push otherwise fails with an OIDC authentication error, not a build error.
 
+## [2.10.1] — 2026-09-01 — E2E Audit Remediation
+
+Patch release: fixes every confirmed real defect from a full static-audit + live-production dry run against `main` @ v2.10.0 (`docs/superpowers/plans/2026-09-01-e2e-audit-dryrun-ledger.md`), remediated per `docs/superpowers/plans/2026-09-01-e2e-audit-remediation.md`. Bug fixes and doc corrections only — no new features, no behavior change to any request-path decision.
+
+### Fixed
+
+- Helm chart: the `RATECAP_ADMIN_SECRET` env block in `sidecar.yaml` is now guarded by `.Values.adminSecret.existingSecretName`, fixing an install-breaking bug when the admin secret is left unset (the audit's most severe finding).
+- Helm chart: `tls.mode` (`strict`|`permissive`) is now wired through to `RATECAP_TLS_MODE`, and the NetworkPolicy's port-9443 ingress rule is gated on `tls.mode == "permissive"` instead of just `tls.enabled`.
+- `CHANGELOG.md`: merged the phantom `[2.4.1]` entry (no `v2.4.1` tag ever existed) into `[2.5.0]`, the release it actually shipped in.
+- `README.md`: added the missing `bash deploy/generate-demo-certs.sh` step to the top-level Quick Start, matching the already-correct Benchmarks section and `CLAUDE.md`.
+- `deploy/sampleapp/main.go`: `/fleet-demo`'s release call now sends `X-RateCap-Concurrency-Key`/`-Token` as headers (matching the sidecar's `ReleaseHandler`) instead of query parameters, and releases the Tier-2 per-key concurrency slot on a shed (non-200) response instead of leaking it until the reaper window expires.
+- `deploy/sampleapp/main.go`: `/fleet-demo` and `/worker-demo` now relay the sidecar's `X-RateCap-Shed-Tier`/`Retry-After-Ms`/`RateLimit-Reset` response headers for every status code, not just 200.
+- Go SDK (`packages/sdks/go/client.go`): `Allow()`/`Acquire()` now parse and surface `RateLimit-Reset` alongside the existing `RetryAfterMs`.
+- `.github/dependabot.yml`: added the missing `gomod` entry for `services/core/integrationtests`.
+- Helm chart: added `resources` (requests/limits) blocks to every component's container spec (core, sidecar, redis, redis-sentinel, sampleapp).
+- `deploy/docker-compose.bench.yml`: raised the sidecar's RPS ceiling in the benchmark overlay, which was silently capping throughput below what the benchmark actually drove.
+- `CONTRIBUTING.md`, `ARCHITECTURE.md`, `README.md`, `SECURITY.md`: added the missing `cli` and `packages/sdks/python` references (build/test loops, component overview, project layout, and security scope respectively).
+- `services/core/grpcserver/server.go`: `CheckRateLimit` now rejects non-positive `Cost` server-side, defense in depth alongside the sidecar's own `resolveCost` validation.
+
 ## [2.10.0] — 2026-09-01 — OpenTelemetry Trace-Context Propagation
 
 Minor release: implements the roadmap's originally-deferred Phase 1 stretch item (`docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md`, Phase 1 item 9) — flagged at the time as the largest item in Phase 1, pre-approved to slip, and never re-picked-up by Phase 5's own item list. No request-path decision logic changes.
@@ -96,11 +115,19 @@ Minor release: Phase 2 of the v3 upgrade roadmap — RateCap's core architectura
 
 - The new admin lever requires its own secret (`RATECAP_ADMIN_SECRET`), separate from `RATECAP_SHARED_SECRET`, given its fleet-wide and effectively unbounded blast radius compared to a normal `/check` call.
 
-## [2.5.0] — 2026-08-28 — Phase 1 Observability Foundation
+## [2.5.0] — 2026-08-28 — Phase 0 Housekeeping & Phase 1 Observability Foundation
 
-Minor release: Phase 1 of the v3 upgrade roadmap — `services/core` gains self-instrumentation it previously had none of, the sidecar's `/metrics` no longer shares its self-throttle limiter with real traffic, and both services' health checks reflect real backing-service connectivity instead of static/startup-only state.
+Minor release combining two v3 upgrade roadmap phases, both cut in the same commit: Phase 0 (housekeeping and quick wins, sequenced before any phase that needed a trustworthy version number to build on) and Phase 1 (`services/core` gains self-instrumentation it previously had none of, the sidecar's `/metrics` no longer shares its self-throttle limiter with real traffic, and both services' health checks reflect real backing-service connectivity instead of static/startup-only state).
 
-### Added
+**Correction:** Phase 0's work below was originally given its own standalone `## [2.4.1]` heading in this file. No `v2.4.1` tag or `VERSION` state ever existed — the commit that added that heading (`chore: cut v2.4.1 (Phase 0 backfill) and v2.5.0 (Phase 1) in CHANGELOG, bump VERSION to 2.5.0`) bumped `VERSION` directly from `2.4.0` to `2.5.0`. That heading has been merged into this entry, which is the only one that ever actually shipped.
+
+### Added — Phase 0: Housekeeping & Quick Wins
+
+- `.github/dependabot.yml` covering all Go module directories plus `pip`, `github-actions`, and `docker` ecosystems, grouped, on a weekly schedule.
+- `VERSION` as the single authoritative version source.
+- Merged `fix/v3-config-validation` (Tier 1 `rate_limiter` config validation) and `fix/v3-breaking-wire-changes` (`PRIORITY_UNSPECIFIED` proto enum sentinel — a breaking wire-format renumbering, called out explicitly rather than shipped silently).
+
+### Added — Phase 1: Observability Foundation
 
 - `ratecap-core` `/metrics` endpoint (new `:9092` listener) — gRPC request count/latency by method and status, Redis call latency/error count, config-reload success/failure count.
 - `ratecap_fail_open_total{tier,reason}` — Tier 1 (request-rate) now fails OPEN on a Redis/store error instead of surfacing an internal error, matching Stripe's documented precedent; Tiers 2/3 remain fail-closed by design (see `ARCHITECTURE.md`'s new Observability section for the full per-tier contract).
@@ -108,27 +135,17 @@ Minor release: Phase 1 of the v3 upgrade roadmap — `services/core` gains self-
 - Starter Grafana dashboard (`deploy/grafana/ratecap-overview.json`) and baseline alert rules (`deploy/grafana/ratecap-alerts.yml`).
 - An Observability section in `ARCHITECTURE.md` documenting the full metrics contract, the per-tier Redis-down degradation contract, and current tracing limitations.
 
-### Fixed
-
-- Sidecar `/healthz` now reflects real gRPC connectivity to core instead of unconditionally returning 200.
-- Core's gRPC health service now reflects real Redis connectivity (re-checked every 5s) instead of being set to `SERVING` once at startup and never updated again.
-- `/metrics` and `/healthz` on the sidecar no longer share the process-wide self-throttle rate limiter with `/check`/`/release` — a Prometheus scrape can no longer be 429'd by the same limiter throttling real traffic.
-
-## [2.4.1] — 2026-08-27 — Phase 0 Housekeeping & Quick Wins
-
-Patch release: Phase 0 of the v3 upgrade roadmap (see `docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md`) — housekeeping and quick wins, sequenced before any phase that needed a trustworthy version number to build on.
-
-### Fixed
+### Fixed — Phase 0: Housekeeping & Quick Wins
 
 - Tier 2's bounded-queueing backlog counter is now Redis-backed (`store.IncrConcurrent`/`DecrConcurrent` against a `backlog:` key namespace) instead of a per-instance `atomic.Int64` — with N core replicas, the real ceiling was previously `maxBacklog × N`, not one shared ceiling.
 - `bench_run.go`'s `--acquire` path no longer silently drops accepted/rejected/errored request outcomes into the same latency distribution; results are now bucketed separately, and every ticket's `Release()` is called even when the request itself was rejected.
 - Dependency skew across `proto`/`services/core`/`services/sidecar` closed by merging the 4 open Dependabot PRs (grpc, go-redis, testcontainers, x/sys, x/text) in lockstep rather than per-module.
 
-### Added
+### Fixed — Phase 1: Observability Foundation
 
-- `.github/dependabot.yml` covering all Go module directories plus `pip`, `github-actions`, and `docker` ecosystems, grouped, on a weekly schedule.
-- `VERSION` as the single authoritative version source.
-- Merged `fix/v3-config-validation` (Tier 1 `rate_limiter` config validation) and `fix/v3-breaking-wire-changes` (`PRIORITY_UNSPECIFIED` proto enum sentinel — a breaking wire-format renumbering, called out explicitly rather than shipped silently).
+- Sidecar `/healthz` now reflects real gRPC connectivity to core instead of unconditionally returning 200.
+- Core's gRPC health service now reflects real Redis connectivity (re-checked every 5s) instead of being set to `SERVING` once at startup and never updated again.
+- `/metrics` and `/healthz` on the sidecar no longer share the process-wide self-throttle rate limiter with `/check`/`/release` — a Prometheus scrape can no longer be 429'd by the same limiter throttling real traffic.
 
 ## [2.3.2] — 2026-07-20 — Tier 2 Concurrency-Token Security Hotfix
 

@@ -22,7 +22,7 @@ cd RateCap
 ### Build
 
 ```bash
-for m in proto services/core services/sidecar packages/sdks/go deploy/sampleapp; do
+for m in proto services/core services/core/integrationtests services/sidecar packages/sdks/go cli deploy/sampleapp; do
   (cd "$m" && go build ./...)
 done
 ```
@@ -30,7 +30,7 @@ done
 ### Test
 
 ```bash
-for m in proto services/core services/core/integrationtests services/sidecar packages/sdks/go; do
+for m in proto services/core services/core/integrationtests services/sidecar packages/sdks/go cli; do
   (cd "$m" && go test ./... -race)
 done
 ```

@@ -16,6 +16,13 @@ spec:
         - name: core
           image: "{{ .Values.core.image.repository }}:{{ .Values.core.image.tag }}"
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.core.resources.requests.cpu }}
+              memory: {{ .Values.core.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.core.resources.limits.cpu }}
+              memory: {{ .Values.core.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.core.grpcPort }}
             - containerPort: {{ .Values.core.healthPort }}
@@ -55,6 +62,8 @@ spec:
               value: /etc/ratecap/certs/tls.key
             - name: RATECAP_TLS_CA_PATH
               value: /etc/ratecap/certs/ca.crt
+            - name: RATECAP_TLS_MODE
+              value: {{ .Values.tls.mode }}
             {{- end }}
           volumeMounts:
             - name: config

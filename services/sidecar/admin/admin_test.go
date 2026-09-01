@@ -42,6 +42,34 @@ func TestServeHTTP_RejectsMissingAdminSecret(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_DisabledWhenHandlerSecretIsEmpty(t *testing.T) {
+	// RATECAP_ADMIN_SECRET unset (h.secret == "") must disable the endpoint
+	// outright via an explicit guard — not merely happen to reject because
+	// ConstantTimeCompare never matches an empty secret. Cover both an
+	// attacker sending no header and one sending a real-looking value,
+	// since either could slip through if the explicit guard were removed
+	// and only the comparison-based rejection remained.
+	client := &fakeAdminClient{}
+	h := admin.NewHandler(client, "")
+
+	for _, provided := range []string{"", "some-guessed-value"} {
+		req := httptest.NewRequest(http.MethodPost, "/admin/set-limit", strings.NewReader(`{"tier":"rate_limiter","value":500}`))
+		if provided != "" {
+			req.Header.Set("X-RateCap-Admin-Secret", provided)
+		}
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("provided=%q: expected 503 (endpoint disabled) when handler secret is empty, got %d", provided, rec.Code)
+		}
+		if client.lastReq != nil {
+			t.Errorf("provided=%q: expected the request to never reach core when the admin endpoint is disabled", provided)
+		}
+	}
+}
+
 func TestServeHTTP_RejectsWrongAdminSecret(t *testing.T) {
 	client := &fakeAdminClient{}
 	h := admin.NewHandler(client, "correct-secret")
