@@ -54,7 +54,7 @@ func (s *Shedder) shouldAdmitAtLoad(current int64) bool {
 	}
 	intoRamp := current - rampStart
 	rejectProbability := float64(intoRamp) / float64(rampWindow)
-	return rand.Float64() >= rejectProbability
+	return rand.Float64() >= rejectProbability //nolint:gosec // probabilistic load-shedding decision, not a security/cryptographic use — math/rand is the right tool here
 }
 
 func (s *Shedder) Release() {

@@ -1,0 +1,42 @@
+# Config for GitHub's native auto-generated release notes. This is a
+# supplement to CHANGELOG.md's hand-written narrative, not a replacement —
+# the manual changelog entries are materially more detailed. Categories
+# mirror the Conventional Commit types documented in CONTRIBUTING.md.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: 🚀 Features
+      labels:
+        - feat
+        - enhancement
+    - title: 🐛 Fixes
+      labels:
+        - fix
+        - bug
+    - title: ⚡ Performance
+      labels:
+        - perf
+    - title: ♻️ Refactoring
+      labels:
+        - refactor
+    - title: 📚 Documentation
+      labels:
+        - docs
+    - title: 🧪 Tests
+      labels:
+        - test
+    - title: 🛠 CI / Build
+      labels:
+        - ci
+        - build
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+    - title: 🧹 Chores
+      labels:
+        - chore
+    - title: Other Changes
+      labels:
+        - "*"

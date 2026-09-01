@@ -33,7 +33,7 @@ func Load(certPath, keyPath, caPath string) (*tls.Config, func(), error) {
 		return nil, nil, fmt.Errorf("loading server cert/key: %w", err)
 	}
 
-	caData, err := os.ReadFile(caPath)
+	caData, err := os.ReadFile(caPath) //nolint:gosec // caPath is an operator-supplied env var (RATECAP_TLS_CA_PATH), not attacker input
 	if err != nil {
 		stop()
 		return nil, nil, fmt.Errorf("reading CA cert: %w", err)

@@ -3,7 +3,7 @@ package proxy_test
 import (
 	"testing"
 
-	"github.com/ratecap/sidecar/proxy"
+	"github.com/sairam0424/RateCap/services/sidecar/proxy"
 )
 
 func TestResolvePriority_HeaderCriticalOverridesDefault(t *testing.T) {

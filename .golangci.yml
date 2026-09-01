@@ -6,6 +6,7 @@ linters:
   default: none
   enable:
     - errcheck
+    - gosec
     - govet
     - ineffassign
     - staticcheck

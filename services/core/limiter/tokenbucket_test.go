@@ -8,8 +8,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/ratecap/core/limiter"
-	coremetrics "github.com/ratecap/core/metrics"
+	"github.com/sairam0424/RateCap/services/core/limiter"
+	coremetrics "github.com/sairam0424/RateCap/services/core/metrics"
 )
 
 type fakeStore struct {

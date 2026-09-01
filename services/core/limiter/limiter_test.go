@@ -3,7 +3,7 @@ package limiter_test
 import (
 	"testing"
 
-	"github.com/ratecap/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/limiter"
 )
 
 func TestRequest_PriorityDefaultsToSheddable(t *testing.T) {

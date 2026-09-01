@@ -1,4 +1,4 @@
-module github.com/ratecap/core
+module github.com/sairam0424/RateCap/services/core
 
 go 1.26.2
 
@@ -6,7 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/ratecap/proto v0.0.0-00010101000000-000000000000
+	github.com/sairam0424/RateCap/proto v0.0.0-00010101000000-000000000000
 	github.com/redis/go-redis/v9 v9.22.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0
 	go.opentelemetry.io/otel v1.46.0
@@ -44,4 +44,4 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-replace github.com/ratecap/proto => ../../proto
+replace github.com/sairam0424/RateCap/proto => ../../proto

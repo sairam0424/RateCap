@@ -2,7 +2,7 @@ package shadow
 
 import "os"
 
-import ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+import ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
 func GlobalOverrideEnabled() bool {
 	return os.Getenv("RATECAP_SHADOW_MODE") == "true"

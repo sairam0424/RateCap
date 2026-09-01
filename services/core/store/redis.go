@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	coremetrics "github.com/ratecap/core/metrics"
+	coremetrics "github.com/sairam0424/RateCap/services/core/metrics"
 )
 
 //go:embed lua/token_bucket.lua

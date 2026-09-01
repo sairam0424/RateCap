@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/ratecap/sidecar/auth"
+	"github.com/sairam0424/RateCap/services/sidecar/auth"
 )
 
 func TestUnaryClientInterceptor_AttachesSecretToOutgoingMetadata(t *testing.T) {

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ratecap/cli/cmd"
+	"github.com/sairam0424/RateCap/cli/cmd"
 )
 
 func main() {

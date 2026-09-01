@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/ratecap/sidecar/worker"
+	"github.com/sairam0424/RateCap/services/sidecar/worker"
 )
 
 func TestShedder_AllowsExactlyMaxConcurrent(t *testing.T) {

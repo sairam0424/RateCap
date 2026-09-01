@@ -1,4 +1,4 @@
-module github.com/ratecap/proto
+module github.com/sairam0424/RateCap/proto
 
 go 1.26.2
 

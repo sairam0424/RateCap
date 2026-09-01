@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package ratecap.v1;
 
-option go_package = "github.com/ratecap/proto/ratecap/v1;ratecapv1";
+option go_package = "github.com/sairam0424/RateCap/proto/ratecap/v1;ratecapv1";
 
 service RatecapService {
   rpc CheckRateLimit(CheckRateLimitRequest) returns (CheckRateLimitResponse);

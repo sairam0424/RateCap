@@ -1,10 +1,10 @@
-module github.com/ratecap/sidecar
+module github.com/sairam0424/RateCap/services/sidecar
 
 go 1.26.2
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/ratecap/proto v0.0.0-00010101000000-000000000000
+	github.com/sairam0424/RateCap/proto v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0
@@ -38,7 +38,7 @@ require (
 )
 
 require (
-	github.com/ratecap/core v0.0.0
+	github.com/sairam0424/RateCap/services/core v0.0.0
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
@@ -46,6 +46,6 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-replace github.com/ratecap/proto => ../../proto
+replace github.com/sairam0424/RateCap/proto => ../../proto
 
-replace github.com/ratecap/core => ../core
+replace github.com/sairam0424/RateCap/services/core => ../core

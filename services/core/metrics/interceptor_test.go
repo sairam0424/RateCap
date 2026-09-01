@@ -15,7 +15,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/ratecap/core/metrics"
+	"github.com/sairam0424/RateCap/services/core/metrics"
 )
 
 // The FullMethod values below are deliberately synthetic (not the real

@@ -9,8 +9,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/ratecap/core/limiter"
-	"github.com/ratecap/core/store"
+	"github.com/sairam0424/RateCap/services/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/store"
 )
 
 var raceTestSigningKey = []byte("test-signing-key-do-not-use-in-production")
