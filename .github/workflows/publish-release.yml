@@ -65,6 +65,44 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  publish-cli-binaries:
+    # windows/arm64 is intentionally excluded: 5 real targets, not 6 — Go's
+    # windows/arm64 port has no first-party consumer here and matches the
+    # matrix shape called out in the release plan.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release upload needs write access to attach assets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+
+      - name: Build cross-platform binaries
+        working-directory: cli
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            out="ratecapctl_${os}_${arch}"
+            if [ "$os" = "windows" ]; then
+              out="${out}.exe"
+            fi
+            echo "building ${out}"
+            GOOS="$os" GOARCH="$arch" go build -ldflags "-X github.com/sairam0424/RateCap/cli/cmd.Version=${{ github.ref_name }}" -o "$out" .
+          done
+
+      - name: Generate checksums
+        working-directory: cli
+        run: sha256sum ratecapctl_* > checksums.txt
+
+      - name: Upload release assets
+        working-directory: cli
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" ratecapctl_* checksums.txt --repo "${{ github.repository }}"
+
   publish-helm-chart:
     # OCI push replaces the old helm/chart-releaser-action publish, which
     # targeted a gh-pages branch that has never existed on this repo (every
