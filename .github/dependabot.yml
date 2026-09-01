@@ -25,6 +25,14 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: "gomod"
+    directory: "/services/core/integrationtests"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: "gomod"
     directory: "/cli"
     schedule:
       interval: "weekly"
