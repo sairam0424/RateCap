@@ -69,7 +69,7 @@ func TestLoad_KeepsLastKnownGoodOnReloadFailure(t *testing.T) {
 	}
 	defer stop()
 
-	if err := os.WriteFile(certPath, []byte("not a valid cert"), 0644); err != nil {
+	if err := os.WriteFile(certPath, []byte("not a valid cert"), 0600); err != nil {
 		t.Fatalf("failed to write corrupt cert: %v", err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -116,28 +116,28 @@ func writeSelfSignedKeyPair(t *testing.T, dir, certFile, keyFile, dnsName string
 	}
 
 	certPath = filepath.Join(dir, certFile)
-	certOut, err := os.Create(certPath)
+	certOut, err := os.Create(certPath) //nolint:gosec // certPath is built from a test-owned t.TempDir() fixture
 	if err != nil {
 		t.Fatalf("failed to create cert file: %v", err)
 	}
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
 		t.Fatalf("failed to write cert: %v", err)
 	}
-	certOut.Close()
+	certOut.Close() //nolint:gosec,errcheck // test fixture write already flushed above; a Close error here carries no new information
 
 	keyBytes, err := x509.MarshalECPrivateKey(priv)
 	if err != nil {
 		t.Fatalf("failed to marshal key: %v", err)
 	}
 	keyPath = filepath.Join(dir, keyFile)
-	keyOut, err := os.Create(keyPath)
+	keyOut, err := os.Create(keyPath) //nolint:gosec // keyPath is built from a test-owned t.TempDir() fixture
 	if err != nil {
 		t.Fatalf("failed to create key file: %v", err)
 	}
 	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}); err != nil {
 		t.Fatalf("failed to write key: %v", err)
 	}
-	keyOut.Close()
+	keyOut.Close() //nolint:gosec,errcheck // test fixture write already flushed above; a Close error here carries no new information
 
 	return certPath, keyPath
 }
@@ -162,7 +162,7 @@ func writeCA(t *testing.T, dir string) string {
 	}
 
 	caPath := filepath.Join(dir, "ca.pem")
-	f, err := os.Create(caPath)
+	f, err := os.Create(caPath) //nolint:gosec // caPath is built from a test-owned t.TempDir() fixture
 	if err != nil {
 		t.Fatalf("failed to create CA file: %v", err)
 	}

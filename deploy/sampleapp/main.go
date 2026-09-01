@@ -44,14 +44,14 @@ func relayCheckHeaders(w http.ResponseWriter, checkResp http.Header) {
 // no-op there (400, discarded below), which is how this leaked before.
 func releaseAll(keys []releaseKey, sidecarBase string) {
 	for _, rk := range keys {
-		releaseReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sidecarBase+"/release", nil)
+		releaseReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sidecarBase+"/release", nil) //nolint:gosec // sidecarBase is a startup env var (RATECAP_SIDECAR_ADDR), not attacker input
 		if err != nil {
 			continue
 		}
 		releaseReq.Header.Set("X-RateCap-Concurrency-Key", rk.key)
 		releaseReq.Header.Set("X-RateCap-Concurrency-Token", rk.tok)
-		if relResp, err := http.DefaultClient.Do(releaseReq); err == nil {
-			relResp.Body.Close() //nolint:errcheck // best-effort release response; the release call itself already succeeded by the time we get here
+		if relResp, err := http.DefaultClient.Do(releaseReq); err == nil { //nolint:gosec // releaseReq's URL is built from trusted config above, not attacker input
+			relResp.Body.Close() //nolint:errcheck,gosec // best-effort release response; the release call itself already succeeded by the time we get here
 		}
 	}
 }
@@ -109,7 +109,14 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
-		priority := r.URL.Query().Get("priority")
+		// priorityLabel is deliberately not the raw query value: only a
+		// known-safe, whitelisted label ("critical"/"sheddable") is ever
+		// echoed back in a response body below, never the caller-supplied
+		// string itself.
+		priorityLabel := "sheddable"
+		if r.URL.Query().Get("priority") == "critical" {
+			priorityLabel = "critical"
+		}
 
 		// A fresh key per request keeps tier 1 (per-key token bucket) and
 		// tier 2 (per-key concurrency cap) from ever tripping here — this
@@ -119,18 +126,14 @@ func main() {
 		// shared count regardless of each request using a distinct key.
 		key := fmt.Sprintf("fleet-demo-%d", fleetDemoCounter.Add(1))
 
-		checkReq, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarBase+"/check?key="+url.QueryEscape(key), nil)
+		checkReq, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarBase+"/check?key="+url.QueryEscape(key), nil) //nolint:gosec // sidecarBase is a startup env var (RATECAP_SIDECAR_ADDR); key is this handler's own counter-based literal
 		if err != nil {
 			http.Error(w, "request construction failed", http.StatusInternalServerError)
 			return
 		}
-		if priority == "critical" {
-			checkReq.Header.Set("x-ratecap-priority", "critical")
-		} else {
-			checkReq.Header.Set("x-ratecap-priority", "sheddable")
-		}
+		checkReq.Header.Set("x-ratecap-priority", priorityLabel)
 
-		resp, err := http.DefaultClient.Do(checkReq)
+		resp, err := http.DefaultClient.Do(checkReq) //nolint:gosec // checkReq's URL is built from trusted config above, not attacker input
 		if err != nil {
 			http.Error(w, "fleet check failed", http.StatusInternalServerError)
 			return
@@ -154,19 +157,19 @@ func main() {
 		relayCheckHeaders(w, resp.Header)
 
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
+			resp.Body.Close() //nolint:errcheck,gosec // status code already read; Close error carries no new information
 			w.WriteHeader(resp.StatusCode)
-			fmt.Fprintf(w, "shed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
+			fmt.Fprintf(w, "shed (priority=%s)\n", priorityLabel) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 			releaseAll(releaseKeys, sidecarBase)
 			return
 		}
-		resp.Body.Close() //nolint:errcheck // headers already read; Close error carries no new information
+		resp.Body.Close() //nolint:errcheck,gosec // headers already read; Close error carries no new information
 
 		time.Sleep(2 * time.Second)
 
 		releaseAll(releaseKeys, sidecarBase)
 
-		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
+		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priorityLabel) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
 
 	http.HandleFunc("/worker-demo", func(w http.ResponseWriter, r *http.Request) {
@@ -175,18 +178,18 @@ func main() {
 
 		key := fmt.Sprintf("worker-demo-%d", fleetDemoCounter.Add(1))
 
-		checkReq, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarBase+"/check?key="+url.QueryEscape(key)+"&skip_reservations=true", nil)
+		checkReq, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarBase+"/check?key="+url.QueryEscape(key)+"&skip_reservations=true", nil) //nolint:gosec // sidecarBase is a startup env var (RATECAP_SIDECAR_ADDR); key is this handler's own counter-based literal
 		if err != nil {
 			http.Error(w, "request construction failed", http.StatusInternalServerError)
 			return
 		}
 
-		resp, err := http.DefaultClient.Do(checkReq)
+		resp, err := http.DefaultClient.Do(checkReq) //nolint:gosec // checkReq's URL is built from trusted config above, not attacker input
 		if err != nil {
 			http.Error(w, "worker check failed", http.StatusInternalServerError)
 			return
 		}
-		defer resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
+		defer resp.Body.Close() //nolint:errcheck,gosec // status code already read; Close error carries no new information
 
 		relayCheckHeaders(w, resp.Header)
 
@@ -200,6 +203,17 @@ func main() {
 		fmt.Fprintln(w, "worker request processed") //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
 
+	// Explicit timeouts (matching services/core and services/sidecar's own
+	// http.Server config) rather than the bare ListenAndServe default, which
+	// has none and leaves slow/idle clients able to hold connections open
+	// indefinitely.
+	server := &http.Server{
+		Addr:              ":3000",
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	log.Println("sample app listening on :3000")
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	log.Fatal(server.ListenAndServe())
 }

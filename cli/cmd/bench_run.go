@@ -244,7 +244,7 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 				// Best-effort per Ticket.Release's own godoc; this request's
 				// outcome is already recorded via kind above, and a release
 				// failure doesn't change what the benchmark measured.
-				ticket.Release(ctx) //nolint:errcheck // see comment above
+				ticket.Release(ctx) //nolint:errcheck,gosec // see comment above
 			}
 		} else {
 			allowed, _, _, err := client.Allow(ctx, key)
@@ -274,10 +274,13 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 	total := accepted + rejected + errored
 
 	return benchResult{
-		TotalRequests: int(total),
-		Accepted:      int(accepted),
-		Rejected:      int(rejected),
-		Errored:       int(errored),
+		// A benchmark run generating anywhere near 2^31 requests would take
+		// far longer than any realistic run duration — safe on both 32- and
+		// 64-bit builds in practice.
+		TotalRequests: int(total),    //nolint:gosec
+		Accepted:      int(accepted), //nolint:gosec
+		Rejected:      int(rejected), //nolint:gosec
+		Errored:       int(errored),  //nolint:gosec
 		ElapsedMs:     totalElapsed.Milliseconds(),
 		ThroughputRPS: float64(total) / totalElapsed.Seconds(),
 		P50Ms:         cumulative.hist.Percentile(0.50),

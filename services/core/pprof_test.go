@@ -37,7 +37,7 @@ func TestMaybeStartPprofServer_DisabledDoesNotListen(t *testing.T) {
 
 	conn, dialErr := net.Dial("tcp", addr)
 	if dialErr == nil {
-		conn.Close()
+		conn.Close() //nolint:gosec,errcheck // test is about to fail regardless; a Close error here carries no new information
 		t.Fatalf("expected connection refused on %s when pprof is disabled, but dial succeeded", addr)
 	}
 }

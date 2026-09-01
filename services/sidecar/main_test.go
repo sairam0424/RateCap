@@ -130,7 +130,7 @@ func TestNewTopMux_MetricsNeverThrottled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error calling /metrics: %v", err)
 		}
-		resp.Body.Close()
+		resp.Body.Close() //nolint:gosec,errcheck // status code already read; Close error carries no new information
 		if resp.StatusCode == http.StatusTooManyRequests {
 			t.Fatalf("/metrics was throttled on call %d — it must bypass the request-path rate limiter", i)
 		}

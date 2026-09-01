@@ -34,7 +34,7 @@ func writeTestCert(t *testing.T, sans []string) string {
 	}
 
 	path := filepath.Join(t.TempDir(), "test-cert.pem")
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // path is built from t.TempDir(), a test-owned fixture directory
 	if err != nil {
 		t.Fatalf("failed to create cert file: %v", err)
 	}

@@ -79,7 +79,7 @@ func newRedisClient(redisAddr, sentinelAddrsRaw, sentinelMasterName string) *red
 	if len(sentinelAddrs) == 0 {
 		return redis.NewClient(&redis.Options{Addr: redisAddr})
 	}
-	log.Printf("ratecap-core: using Redis Sentinel (master=%s, sentinels=%v)", sentinelMasterName, sentinelAddrs)
+	log.Printf("ratecap-core: using Redis Sentinel (master=%s, sentinels=%v)", sentinelMasterName, sentinelAddrs) //nolint:gosec // startup-time env-var config, not per-request attacker input
 	return redis.NewFailoverClient(&redis.FailoverOptions{
 		MasterName:    sentinelMasterName,
 		SentinelAddrs: sentinelAddrs,
@@ -111,7 +111,7 @@ func resolvePprofEnabled(raw string) bool {
 	}
 	enabled, err := strconv.ParseBool(raw)
 	if err != nil {
-		log.Printf("RATECAP_PPROF_ENABLED=%q is not a valid boolean, defaulting to false", raw)
+		log.Printf("RATECAP_PPROF_ENABLED=%q is not a valid boolean, defaulting to false", raw) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return false
 	}
 	return enabled
@@ -209,7 +209,7 @@ func main() {
 	tlsKeyPath := os.Getenv("RATECAP_TLS_KEY_PATH")
 	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
 	if tlsconfig.EnvVarsPartiallySet(tlsCertPath, tlsKeyPath, tlsCAPath) {
-		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
+		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 	}
 
 	tlsMode, err := resolveTLSMode(os.Getenv("RATECAP_TLS_MODE"))
@@ -217,7 +217,7 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	if (tlsMode == "permissive" || tlsMode == "strict") && tlsCertPath == "" {
-		log.Fatalf("RATECAP_TLS_MODE=%s requires RATECAP_TLS_CERT_PATH/RATECAP_TLS_KEY_PATH/RATECAP_TLS_CA_PATH to be set", tlsMode)
+		log.Fatalf("RATECAP_TLS_MODE=%s requires RATECAP_TLS_CERT_PATH/RATECAP_TLS_KEY_PATH/RATECAP_TLS_CA_PATH to be set", tlsMode) //nolint:gosec // tlsMode is one of a small fixed set already validated by resolveTLSMode, not attacker input
 	}
 
 	sentinelMasterName := os.Getenv("RATECAP_REDIS_SENTINEL_MASTER_NAME")
@@ -284,7 +284,7 @@ func main() {
 
 	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		log.Fatalf("failed to listen on %s: %v", listenAddr, err)
+		log.Fatalf("failed to listen on %s: %v", listenAddr, err) //nolint:gosec // listenAddr is this server's own bind address from a startup env var, not attacker input
 	}
 
 	serverOpts := []grpc.ServerOption{
@@ -298,7 +298,7 @@ func main() {
 		}
 		defer stopCertWatch()
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConf)))
-		log.Printf("ratecap-core: mTLS enabled (mode=%s)", tlsMode)
+		log.Printf("ratecap-core: mTLS enabled (mode=%s)", tlsMode) //nolint:gosec // tlsMode is one of a small fixed set already validated by resolveTLSMode, not attacker input
 	}
 	grpcServer := grpc.NewServer(serverOpts...)
 	coreServer := grpcserver.NewServer(pipeline, redisStore, rateLimiter, fleetShedder, redisStore, []byte(concurrencySigningKey))
@@ -311,7 +311,7 @@ func main() {
 		}
 		tlsLis, err := net.Listen("tcp", tlsAddr)
 		if err != nil {
-			log.Fatalf("failed to listen on %s: %v", tlsAddr, err)
+			log.Fatalf("failed to listen on %s: %v", tlsAddr, err) //nolint:gosec // tlsAddr is this server's own bind address from a startup env var, not attacker input
 		}
 		permissiveConf, stopCertWatch, err := tlsconfig.Load(tlsCertPath, tlsKeyPath, tlsCAPath)
 		if err != nil {
@@ -332,12 +332,12 @@ func main() {
 		tlsGrpcServer := grpc.NewServer(tlsServerOpts...)
 		ratecapv1.RegisterRatecapServiceServer(tlsGrpcServer, coreServer)
 		go func() {
-			log.Printf("ratecap-core permissive-mode TLS listener (optional client cert) on %s", tlsAddr)
+			log.Printf("ratecap-core permissive-mode TLS listener (optional client cert) on %s", tlsAddr) //nolint:gosec // tlsAddr is this server's own bind address from a startup env var, not attacker input
 			if err := tlsGrpcServer.Serve(tlsLis); err != nil {
 				log.Fatalf("permissive-mode TLS grpc server failed: %v", err)
 			}
 		}()
-		log.Printf("ratecap-core: TLS_MODE=permissive — plaintext still serving on %s, TLS available on %s", listenAddr, tlsAddr)
+		log.Printf("ratecap-core: TLS_MODE=permissive — plaintext still serving on %s, TLS available on %s", listenAddr, tlsAddr) //nolint:gosec // both addrs are this server's own startup env-var bind addresses, not attacker input
 	}
 
 	// The health service is served on its own plaintext, unauthenticated
@@ -350,7 +350,7 @@ func main() {
 	}
 	healthLis, err := net.Listen("tcp", healthAddr)
 	if err != nil {
-		log.Fatalf("failed to listen on %s: %v", healthAddr, err)
+		log.Fatalf("failed to listen on %s: %v", healthAddr, err) //nolint:gosec // healthAddr is this server's own bind address from a startup env var, not attacker input
 	}
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
@@ -364,7 +364,7 @@ func main() {
 	healthGRPCServer := grpc.NewServer()
 	healthpb.RegisterHealthServer(healthGRPCServer, healthServer)
 	go func() {
-		log.Printf("ratecap-core health server listening on %s", healthAddr)
+		log.Printf("ratecap-core health server listening on %s", healthAddr) //nolint:gosec // healthAddr is this server's own bind address from a startup env var, not attacker input
 		if err := healthGRPCServer.Serve(healthLis); err != nil {
 			log.Fatalf("health grpc server failed: %v", err)
 		}
@@ -382,13 +382,13 @@ func main() {
 	metricsMux.Handle("/metrics", coremetrics.Handler())
 	metricsServer := &http.Server{Addr: metricsAddr, Handler: metricsMux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		log.Printf("ratecap-core metrics server listening on %s", metricsAddr)
+		log.Printf("ratecap-core metrics server listening on %s", metricsAddr) //nolint:gosec // metricsAddr is this server's own bind address from a startup env var, not attacker input
 		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("metrics http server failed: %v", err)
 		}
 	}()
 
-	log.Printf("ratecap-core listening on %s", listenAddr)
+	log.Printf("ratecap-core listening on %s", listenAddr) //nolint:gosec // listenAddr is this server's own bind address from a startup env var, not attacker input
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("grpc server failed: %v", err)
 	}

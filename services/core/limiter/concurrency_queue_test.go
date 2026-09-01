@@ -39,7 +39,7 @@ func TestConcurrencyLimiter_BacklogSharedAcrossInstances(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			l1.Check(ctx, limiter.Request{Key: "k"})
+			l1.Check(ctx, limiter.Request{Key: "k"}) //nolint:gosec,errcheck // background goroutine only occupies a concurrency slot; the assertion is on l2.Check below
 		}()
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -79,7 +79,7 @@ func TestConcurrencyLimiter_BacklogFullReturnsImmediate429(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		close(started)
-		l.Check(ctx, limiter.Request{Key: "k"})
+		l.Check(ctx, limiter.Request{Key: "k"}) //nolint:gosec,errcheck // background goroutine only occupies a concurrency slot; the assertion is on l.Check below
 	}()
 	<-started
 	time.Sleep(20 * time.Millisecond)
@@ -106,7 +106,7 @@ func TestConcurrencyLimiter_SuccessfulPollReturnsQueueAction(t *testing.T) {
 
 	go func() {
 		time.Sleep(30 * time.Millisecond)
-		fs.DecrConcurrent(ctx, "k", token1)
+		fs.DecrConcurrent(ctx, "k", token1) //nolint:gosec,errcheck // best-effort background release; the assertion is on l.Check below, not on this call
 	}()
 
 	start := time.Now()
@@ -235,7 +235,7 @@ func TestConcurrencyLimiter_StressBacklogNeverExceedsMaxBacklog(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			l.Check(ctx, limiter.Request{Key: "k"})
+			l.Check(ctx, limiter.Request{Key: "k"}) //nolint:gosec,errcheck // this goroutine only drives concurrent load; the peak sample loop below is what's asserted
 		}()
 	}
 
@@ -293,7 +293,7 @@ func TestConcurrencyLimiter_StressManyWaitersOneSlotFreeingRepeatedly(t *testing
 				return
 			default:
 				time.Sleep(15 * time.Millisecond)
-				fs.DecrConcurrent(ctx, "k", token)
+				fs.DecrConcurrent(ctx, "k", token) //nolint:gosec,errcheck // background churn goroutine freeing/reacquiring a slot; not the assertion under test
 				time.Sleep(5 * time.Millisecond)
 				_, newTok, _ := fs.IncrConcurrent(ctx, "k", 1, 30000)
 				token = newTok

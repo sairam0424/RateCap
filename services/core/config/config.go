@@ -43,7 +43,7 @@ type Config struct {
 }
 
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is an operator-supplied config file location (CLI flag/env var), not attacker input
 	if err != nil {
 		return nil, fmt.Errorf("reading config %s: %w", path, err)
 	}

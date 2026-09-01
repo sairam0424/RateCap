@@ -85,7 +85,7 @@ client = Client(sys.argv[1])
 result = client.allow("contract-test-key-py", cost=42)
 print("ok" if result.allowed else "rejected")
 `
-	cmd := exec.Command("python3", "-c", script, server.URL)
+	cmd := exec.Command("python3", "-c", script, server.URL) //nolint:gosec // script is a fixed literal above; server.URL is this test's own local httptest.NewServer address
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("python3 invocation failed: %v, output: %s", err, output)

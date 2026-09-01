@@ -33,7 +33,7 @@ tiers:
     max_request_duration_ms: 5000
     shadow_mode: false
 `
-	if err := os.WriteFile(configPath, []byte(validConfig), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(validConfig), 0600); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
@@ -44,7 +44,7 @@ tiers:
 	// exec'ing it directly makes cmd.Process the real server process, so
 	// cmd.Process.Kill() actually terminates it.
 	binPath := filepath.Join(dir, "core-under-test")
-	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
+	buildCmd := exec.Command("go", "build", "-o", binPath, ".") //nolint:gosec // test-only build of this package's own binary; args are fixed literals plus a test-owned t.TempDir() path
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to build test binary: %v\n%s", err, output)
 	}
@@ -58,7 +58,7 @@ tiers:
 		t.Fatalf("failed to release the reserved health port: %v", err)
 	}
 
-	cmd := exec.Command(binPath)
+	cmd := exec.Command(binPath) //nolint:gosec // binPath is the binary this same test just built into a test-owned t.TempDir()
 	cmd.Env = append(os.Environ(),
 		"RATECAP_CONFIG_PATH="+configPath,
 		"RATECAP_SHARED_SECRET=test-secret",

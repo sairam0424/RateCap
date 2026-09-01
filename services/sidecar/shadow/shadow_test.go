@@ -10,7 +10,7 @@ import (
 )
 
 func TestGlobalOverrideEnabled_TrueWhenEnvSet(t *testing.T) {
-	os.Setenv("RATECAP_SHADOW_MODE", "true")
+	os.Setenv("RATECAP_SHADOW_MODE", "true") //nolint:gosec,errcheck // test setup with a fixed literal key/value; os.Setenv failing here is not a realistic outcome
 	defer os.Unsetenv("RATECAP_SHADOW_MODE")
 
 	if !shadow.GlobalOverrideEnabled() {

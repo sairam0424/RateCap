@@ -37,7 +37,7 @@ tiers:
     default_burst: 1000
     shadow_mode: true
 `
-	if err := os.WriteFile(path, []byte(newContents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(newContents), 0600); err != nil {
 		t.Fatalf("failed to update config: %v", err)
 	}
 
@@ -88,11 +88,11 @@ tiers:
     default_burst: 1500
     shadow_mode: false
 `
-	if err := os.WriteFile(path, []byte(firstContents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(firstContents), 0600); err != nil {
 		t.Fatalf("failed to write first rapid update: %v", err)
 	}
 	time.Sleep(10 * time.Millisecond)
-	if err := os.WriteFile(path, []byte(secondContents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(secondContents), 0600); err != nil {
 		t.Fatalf("failed to write second rapid update: %v", err)
 	}
 
@@ -144,7 +144,7 @@ tiers:
   rate_limiter:
     default_rate: invalid
 `
-	if err := os.WriteFile(path, []byte(invalidContents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(invalidContents), 0600); err != nil {
 		t.Fatalf("failed to update config: %v", err)
 	}
 
@@ -170,7 +170,7 @@ tiers:
     default_burst: 1500
     shadow_mode: true
 `
-	if err := os.WriteFile(path, []byte(validContents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(validContents), 0600); err != nil {
 		t.Fatalf("failed to write valid config: %v", err)
 	}
 
@@ -210,7 +210,7 @@ tiers:
 	time.Sleep(100 * time.Millisecond)
 
 	malformedYAML := "not: valid: yaml: at: all: [unterminated"
-	if err := os.WriteFile(path, []byte(malformedYAML), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(malformedYAML), 0600); err != nil {
 		t.Fatalf("failed to write malformed config: %v", err)
 	}
 
@@ -253,7 +253,7 @@ tiers:
 	// valid YAML, without the closing content — a real interrupted-write
 	// scenario, distinct from TestWatch_SkipsInvalidConfigWithoutCrashing's
 	// well-formed-but-semantically-invalid case.
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0600) //nolint:gosec // path is from writeTempConfig, a test-owned t.TempDir() fixture
 	if err != nil {
 		t.Fatalf("failed to open for partial write: %v", err)
 	}
@@ -279,7 +279,7 @@ tiers:
     default_burst: 1500
     shadow_mode: false
 `
-	if err := os.WriteFile(path, []byte(validContents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(validContents), 0600); err != nil {
 		t.Fatalf("failed to write recovery content: %v", err)
 	}
 
@@ -303,7 +303,7 @@ tiers:
     default_rate: 100
     default_burst: 500
     shadow_mode: false
-`), 0644); err != nil {
+`), 0600); err != nil {
 		t.Fatalf("failed to write initial config: %v", err)
 	}
 
@@ -330,7 +330,7 @@ tiers:
     default_rate: 400
     default_burst: 2000
     shadow_mode: false
-`), 0644); err != nil {
+`), 0600); err != nil {
 		t.Fatalf("failed to write temp file: %v", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
@@ -357,7 +357,7 @@ tiers:
     default_rate: 100
     default_burst: 500
     shadow_mode: false
-`), 0644); err != nil {
+`), 0600); err != nil {
 		t.Fatalf("failed to write initial config: %v", err)
 	}
 
@@ -385,7 +385,7 @@ tiers:
     default_rate: 500
     default_burst: 2500
     shadow_mode: false
-`), 0644); err != nil {
+`), 0600); err != nil {
 		t.Fatalf("failed to recreate watched file: %v", err)
 	}
 

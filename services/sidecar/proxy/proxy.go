@@ -35,7 +35,7 @@ func resolveCost(raw string) int {
 	// cast at the call site.
 	parsed, err := strconv.ParseInt(raw, 10, 32)
 	if err != nil || parsed <= 0 {
-		log.Printf("sidecar: /check: cost=%q is invalid, defaulting to 1", raw)
+		log.Printf("sidecar: /check: cost=%q is invalid, defaulting to 1", raw) //nolint:gosec // raw is a request query param, but %q escapes control characters, preventing log-line injection
 		return 1
 	}
 	return int(parsed)
@@ -146,7 +146,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.client.CheckRateLimit(callCtx, &ratecapv1.CheckRateLimitRequest{
 		Key:              key,
-		Cost:             int32(resolveCost(r.URL.Query().Get("cost"))),
+		Cost:             int32(resolveCost(r.URL.Query().Get("cost"))), //nolint:gosec // resolveCost bounds its result to int32 range via ParseInt(_, 10, 32) above, per its own comment
 		SkipReservations: skipReservations,
 		Priority:         protoPriority,
 	})

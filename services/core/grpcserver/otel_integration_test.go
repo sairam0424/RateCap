@@ -55,7 +55,7 @@ func startOTelTestServer(t *testing.T, tp *sdktrace.TracerProvider) (ratecapv1.R
 	}
 
 	cleanup := func() {
-		conn.Close()
+		conn.Close() //nolint:gosec,errcheck // test-only bufconn client conn; process/test is tearing down either way
 		grpcServer.Stop()
 	}
 	return ratecapv1.NewRatecapServiceClient(conn), cleanup

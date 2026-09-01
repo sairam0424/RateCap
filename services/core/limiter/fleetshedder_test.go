@@ -28,7 +28,7 @@ func (f *fakeFleetStore) IncrConcurrent(_ context.Context, key string, cap int, 
 	}
 	f.tokens[key] = count + 1
 	f.nextTok++
-	return true, string(rune('a' + f.nextTok)), nil
+	return true, string(rune('a' + f.nextTok)), nil //nolint:gosec // test fake token generator; f.nextTok is bounded by this test's small concurrency caps, never near rune overflow
 }
 
 func (f *fakeFleetStore) DecrConcurrent(_ context.Context, key, _ string) error {

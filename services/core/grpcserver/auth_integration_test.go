@@ -37,7 +37,7 @@ func startTestServer(t *testing.T, secret string) (ratecapv1.RatecapServiceClien
 	}
 
 	cleanup := func() {
-		conn.Close()
+		conn.Close() //nolint:gosec,errcheck // test-only bufconn client conn; process/test is tearing down either way
 		grpcServer.Stop()
 	}
 	return ratecapv1.NewRatecapServiceClient(conn), cleanup

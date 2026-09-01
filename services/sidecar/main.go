@@ -69,11 +69,11 @@ func resolveMaxInflight(envVal string, defaultVal int64) int64 {
 	}
 	parsed, err := strconv.ParseInt(envVal, 10, 64)
 	if err != nil {
-		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q is not a valid integer, using default of %d: %v", envVal, defaultVal, err)
+		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q is not a valid integer, using default of %d: %v", envVal, defaultVal, err) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return defaultVal
 	}
 	if parsed <= 0 {
-		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q must be a positive integer, using default of %d", envVal, defaultVal)
+		log.Printf("RATECAP_MAX_INFLIGHT_REQUESTS=%q must be a positive integer, using default of %d", envVal, defaultVal) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return defaultVal
 	}
 	return parsed
@@ -85,11 +85,11 @@ func resolveRampStartPct(envVal string, defaultVal int) int {
 	}
 	parsed, err := strconv.Atoi(envVal)
 	if err != nil {
-		log.Printf("RATECAP_SHED_RAMP_START_PCT=%q is not a valid integer, using default of %d: %v", envVal, defaultVal, err)
+		log.Printf("RATECAP_SHED_RAMP_START_PCT=%q is not a valid integer, using default of %d: %v", envVal, defaultVal, err) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return defaultVal
 	}
 	if parsed <= 0 || parsed > 100 {
-		log.Printf("RATECAP_SHED_RAMP_START_PCT=%q must be in (0, 100], using default of %d", envVal, defaultVal)
+		log.Printf("RATECAP_SHED_RAMP_START_PCT=%q must be in (0, 100], using default of %d", envVal, defaultVal) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return defaultVal
 	}
 	return parsed
@@ -101,11 +101,11 @@ func resolveMaxRPS(envVal string, defaultVal float64) float64 {
 	}
 	parsed, err := strconv.ParseFloat(envVal, 64)
 	if err != nil {
-		log.Printf("RATECAP_SIDECAR_MAX_RPS=%q is not a valid number, using default of %v: %v", envVal, defaultVal, err)
+		log.Printf("RATECAP_SIDECAR_MAX_RPS=%q is not a valid number, using default of %v: %v", envVal, defaultVal, err) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return defaultVal
 	}
 	if parsed <= 0 {
-		log.Printf("RATECAP_SIDECAR_MAX_RPS=%q must be a positive number, using default of %v", envVal, defaultVal)
+		log.Printf("RATECAP_SIDECAR_MAX_RPS=%q must be a positive number, using default of %v", envVal, defaultVal) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return defaultVal
 	}
 	return parsed
@@ -120,7 +120,7 @@ func resolvePprofEnabled(raw string) bool {
 	}
 	enabled, err := strconv.ParseBool(raw)
 	if err != nil {
-		log.Printf("RATECAP_PPROF_ENABLED=%q is not a valid boolean, defaulting to false", raw)
+		log.Printf("RATECAP_PPROF_ENABLED=%q is not a valid boolean, defaulting to false", raw) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 		return false
 	}
 	return enabled
@@ -210,7 +210,7 @@ func main() {
 	tlsKeyPath := os.Getenv("RATECAP_TLS_KEY_PATH")
 	tlsCAPath := os.Getenv("RATECAP_TLS_CA_PATH")
 	if tlsconfig.EnvVarsPartiallySet(tlsCertPath, tlsKeyPath, tlsCAPath) {
-		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath)
+		log.Fatalf("RATECAP_TLS_CERT_PATH, RATECAP_TLS_KEY_PATH, and RATECAP_TLS_CA_PATH must be set together or not at all — got cert=%q key=%q ca=%q", tlsCertPath, tlsKeyPath, tlsCAPath) //nolint:gosec // startup-time env-var config; %q also escapes control characters
 	}
 
 	transportCreds := insecure.NewCredentials()
@@ -231,7 +231,7 @@ func main() {
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
-		log.Fatalf("failed to connect to ratecap-core at %s: %v", coreAddr, err)
+		log.Fatalf("failed to connect to ratecap-core at %s: %v", coreAddr, err) //nolint:gosec // coreAddr is a startup env var (RATECAP_CORE_ADDR), not attacker input
 	}
 	defer conn.Close() //nolint:errcheck // process is exiting either way; a close error on this long-lived client conn has nothing left to act on
 
@@ -267,7 +267,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("ratecap-sidecar listening on %s, forwarding to core at %s", listenAddr, coreAddr)
+	log.Printf("ratecap-sidecar listening on %s, forwarding to core at %s", listenAddr, coreAddr) //nolint:gosec // both are startup env-var config (RATECAP_SIDECAR_ADDR/RATECAP_CORE_ADDR), not attacker input
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("sidecar http server failed: %v", err)
 	}

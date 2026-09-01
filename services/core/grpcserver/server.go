@@ -144,14 +144,14 @@ func (s *Server) SetDynamicLimit(ctx context.Context, req *ratecapv1.SetDynamicL
 	case "rate_limiter":
 		previous := s.rateLimiter.SetRate(int(req.Value))
 		log.Printf("grpcserver: SetDynamicLimit: rate_limiter rate changed %d -> %d", previous, req.Value)
-		return &ratecapv1.SetDynamicLimitResponse{Tier: req.Tier, PreviousValue: int32(previous), NewValue: req.Value}, nil
+		return &ratecapv1.SetDynamicLimitResponse{Tier: req.Tier, PreviousValue: int32(previous), NewValue: req.Value}, nil //nolint:gosec // previous originates from either config.DefaultRate or an earlier int32 req.Value; practical rate-limiter values never approach int32's range
 	case "fleet_shedder":
 		previous, err := s.fleetShedder.SetReservedCriticalPct(int(req.Value))
 		if err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		log.Printf("grpcserver: SetDynamicLimit: fleet_shedder reserved_critical_pct changed %d -> %d", previous, req.Value)
-		return &ratecapv1.SetDynamicLimitResponse{Tier: req.Tier, PreviousValue: int32(previous), NewValue: req.Value}, nil
+		return &ratecapv1.SetDynamicLimitResponse{Tier: req.Tier, PreviousValue: int32(previous), NewValue: req.Value}, nil //nolint:gosec // reserved_critical_pct is validated to [0,100] by SetReservedCriticalPct, far below int32's range
 	default:
 		return nil, status.Error(codes.InvalidArgument, `tier must be "rate_limiter" or "fleet_shedder"`)
 	}
