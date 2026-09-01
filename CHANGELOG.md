@@ -10,6 +10,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Publishing `packages/sdks/python` to PyPI: `.github/workflows/publish-python-sdk.yml` and its PyPI Trusted Publisher (OIDC) setup are ready, but no `python-sdk-v*` tag has been pushed yet. Before the first one is, a repo admin must complete the one-time PyPI pending-publisher registration documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — the first tag push otherwise fails with an OIDC authentication error, not a build error.
 
+## [2.10.1] — 2026-09-01 — E2E Audit Remediation
+
+Patch release: fixes every confirmed real defect from a full static-audit + live-production dry run against `main` @ v2.10.0 (`docs/superpowers/plans/2026-09-01-e2e-audit-dryrun-ledger.md`), remediated per `docs/superpowers/plans/2026-09-01-e2e-audit-remediation.md`. Bug fixes and doc corrections only — no new features, no behavior change to any request-path decision.
+
+### Fixed
+
+- Helm chart: the `RATECAP_ADMIN_SECRET` env block in `sidecar.yaml` is now guarded by `.Values.adminSecret.existingSecretName`, fixing an install-breaking bug when the admin secret is left unset (the audit's most severe finding).
+- Helm chart: `tls.mode` (`strict`|`permissive`) is now wired through to `RATECAP_TLS_MODE`, and the NetworkPolicy's port-9443 ingress rule is gated on `tls.mode == "permissive"` instead of just `tls.enabled`.
+- `CHANGELOG.md`: merged the phantom `[2.4.1]` entry (no `v2.4.1` tag ever existed) into `[2.5.0]`, the release it actually shipped in.
+- `README.md`: added the missing `bash deploy/generate-demo-certs.sh` step to the top-level Quick Start, matching the already-correct Benchmarks section and `CLAUDE.md`.
+- `deploy/sampleapp/main.go`: `/fleet-demo`'s release call now sends `X-RateCap-Concurrency-Key`/`-Token` as headers (matching the sidecar's `ReleaseHandler`) instead of query parameters, and releases the Tier-2 per-key concurrency slot on a shed (non-200) response instead of leaking it until the reaper window expires.
+- `deploy/sampleapp/main.go`: `/fleet-demo` and `/worker-demo` now relay the sidecar's `X-RateCap-Shed-Tier`/`Retry-After-Ms`/`RateLimit-Reset` response headers for every status code, not just 200.
+- Go SDK (`packages/sdks/go/client.go`): `Allow()`/`Acquire()` now parse and surface `RateLimit-Reset` alongside the existing `RetryAfterMs`.
+- `.github/dependabot.yml`: added the missing `gomod` entry for `services/core/integrationtests`.
+- Helm chart: added `resources` (requests/limits) blocks to every component's container spec (core, sidecar, redis, redis-sentinel, sampleapp).
+- `deploy/docker-compose.bench.yml`: raised the sidecar's RPS ceiling in the benchmark overlay, which was silently capping throughput below what the benchmark actually drove.
+- `CONTRIBUTING.md`, `ARCHITECTURE.md`, `README.md`, `SECURITY.md`: added the missing `cli` and `packages/sdks/python` references (build/test loops, component overview, project layout, and security scope respectively).
+- `services/core/grpcserver/server.go`: `CheckRateLimit` now rejects non-positive `Cost` server-side, defense in depth alongside the sidecar's own `resolveCost` validation.
+
 ## [2.10.0] — 2026-09-01 — OpenTelemetry Trace-Context Propagation
 
 Minor release: implements the roadmap's originally-deferred Phase 1 stretch item (`docs/superpowers/specs/2026-08-27-v3-upgrade-roadmap-design.md`, Phase 1 item 9) — flagged at the time as the largest item in Phase 1, pre-approved to slip, and never re-picked-up by Phase 5's own item list. No request-path decision logic changes.
