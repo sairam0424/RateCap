@@ -83,6 +83,14 @@ jobs:
 
       - name: Build cross-platform binaries
         working-directory: cli
+        env:
+          # Never splice ${{ }} template values directly into a run: script
+          # (GitHub substitutes them into the script TEXT before the shell
+          # ever parses it — a tag name containing a shell metacharacter
+          # would inject arbitrary commands into a job with contents:write/
+          # id-token:write/attestations:write). Route through env: instead,
+          # so the value only ever reaches the shell as an opaque variable.
+          RATECAP_CLI_VERSION: ${{ github.ref_name }}
         run: |
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
             os="${target%/*}"
@@ -92,7 +100,7 @@ jobs:
               out="${out}.exe"
             fi
             echo "building ${out}"
-            GOOS="$os" GOARCH="$arch" go build -ldflags "-X github.com/sairam0424/RateCap/cli/cmd.Version=${{ github.ref_name }}" -o "$out" .
+            GOOS="$os" GOARCH="$arch" go build -ldflags "-X github.com/sairam0424/RateCap/cli/cmd.Version=${RATECAP_CLI_VERSION}" -o "$out" .
           done
 
       - name: Generate checksums
@@ -116,7 +124,9 @@ jobs:
         working-directory: cli
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" ratecapctl_* checksums.txt checksums.txt.bundle --repo "${{ github.repository }}"
+          RATECAP_RELEASE_TAG: ${{ github.ref_name }}
+          RATECAP_REPO: ${{ github.repository }}
+        run: gh release upload "$RATECAP_RELEASE_TAG" ratecapctl_* checksums.txt checksums.txt.bundle --repo "$RATECAP_REPO"
 
   publish-helm-chart:
     # OCI push replaces the old helm/chart-releaser-action publish, which
