@@ -26,7 +26,7 @@ func newTLSCheckCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			certPath, expectedHost := args[0], args[1]
 
-			data, err := os.ReadFile(certPath)
+			data, err := os.ReadFile(certPath) //nolint:gosec // certPath is a local CLI positional arg the operator types themselves, not attacker input
 			if err != nil {
 				return fmt.Errorf("reading %s: %w", certPath, err)
 			}

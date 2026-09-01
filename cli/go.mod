@@ -1,14 +1,14 @@
-module github.com/ratecap/cli
+module github.com/sairam0424/RateCap/cli
 
 go 1.26.2
 
-replace github.com/ratecap/core => ../services/core
+replace github.com/sairam0424/RateCap/services/core => ../services/core
 
-replace github.com/ratecap/sdk-go => ../packages/sdks/go
+replace github.com/sairam0424/RateCap/packages/sdks/go => ../packages/sdks/go
 
 require (
-	github.com/ratecap/core v0.0.0-00010101000000-000000000000
-	github.com/ratecap/sdk-go v0.0.0-00010101000000-000000000000
+	github.com/sairam0424/RateCap/services/core v0.0.0-00010101000000-000000000000
+	github.com/sairam0424/RateCap/packages/sdks/go v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/time v0.15.0
 )

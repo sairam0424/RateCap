@@ -10,16 +10,16 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/ratecap/core/config"
-	"github.com/ratecap/core/limiter"
-	"github.com/ratecap/core/store"
+	"github.com/sairam0424/RateCap/services/core/config"
+	"github.com/sairam0424/RateCap/services/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/store"
 )
 
 func TestMain_FailsClosedOnMissingFleetShedderBlock(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "ratecap.yaml")
 	invalidConfig := "sync_rate: 5\ntiers:\n  rate_limiter:\n    default_rate: 100\n    default_burst: 500\n    shadow_mode: false\n"
-	if err := os.WriteFile(configPath, []byte(invalidConfig), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(invalidConfig), 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}
 
@@ -62,7 +62,7 @@ tiers:
     max_request_duration_ms: 5000
     shadow_mode: false
 `
-	if err := os.WriteFile(configPath, []byte(validConfig), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(validConfig), 0600); err != nil {
 		t.Fatalf("failed to write initial config: %v", err)
 	}
 
@@ -153,7 +153,7 @@ tiers:
     max_request_duration_ms: 5000
     shadow_mode: false
 `
-	if err := os.WriteFile(configPath, []byte(invalidReload), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(invalidReload), 0600); err != nil {
 		t.Fatalf("failed to write invalid reload: %v", err)
 	}
 
@@ -183,7 +183,7 @@ tiers:
     max_request_duration_ms: 5000
     shadow_mode: false
 `
-	if err := os.WriteFile(configPath, []byte(validRecovery), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(validRecovery), 0600); err != nil {
 		t.Fatalf("failed to write recovery config: %v", err)
 	}
 

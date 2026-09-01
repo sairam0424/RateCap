@@ -10,6 +10,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Publishing `packages/sdks/python` to PyPI: `.github/workflows/publish-python-sdk.yml` and its PyPI Trusted Publisher (OIDC) setup are ready, but no `python-sdk-v*` tag has been pushed yet. Before the first one is, a repo admin must complete the one-time PyPI pending-publisher registration documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — the first tag push otherwise fails with an OIDC authentication error, not a build error.
 
+## [2.11.0] — 2026-09-01 — Discoverability & CI/CD Modernization
+
+Minor release: closes every discoverability/CI gap found by directly auditing the live repo/GitHub state and cross-checking against current OSS discoverability and GitHub Actions best-practice research, per `docs/superpowers/plans/2026-09-01-discoverability-ci-modernization.md`.
+
+### Changed
+
+- **Correction, not a feature:** every Go module's declared import path is renamed from the previously-unreachable `github.com/ratecap/*` to the real, resolvable `github.com/sairam0424/RateCap/...` (`core`, `sidecar`, `proto`, `sdk-go`, `cli`, `sampleapp`, and `core/integrationtests`). `github.com/ratecap` has never resolved — confirmed 404 via `curl` and a `go-get=1` probe — so `go get`, `go install`, and pkg.go.dev indexing were non-functional since day one and no real external consumer could ever have depended on the old path; this breaks zero real consumers. Every internal `.go` import, every `go.mod`, all `replace` directives, and every documented code snippet (`README.md`, `CONTRIBUTING.md`, `CLAUDE.md`) are updated to match. Historical records (`CHANGELOG.md`'s past entries, `docs/superpowers/plans/*`) are intentionally left untouched.
+- **Helm chart publishing no longer depends on a branch that has never existed.** `publish-release.yml`'s `publish-helm-chart` job previously used `helm/chart-releaser-action`, which requires a `gh-pages` branch — confirmed via `git ls-remote`/`git branch -a` that this branch has never existed on this repo, so every release with chart changes (v2.4.0, v2.6.0, v2.7.0, v2.9.0, v2.10.1) silently failed at that step. It now does `helm package` + `helm push` directly to `oci://ghcr.io/sairam0424/charts`, the same GHCR registry and `GITHUB_TOKEN` already used for Docker images. Helm's OCI support has been the default, non-experimental distribution model since v3.8.0, and `chart-releaser` itself still has no native OCI push support (upstream `helm/chart-releaser#622`, open/unmerged) — so this drops the `gh-pages` dependency entirely rather than patching it in place.
+
+### Added
+
+- Signing of every pushed Helm chart digest with `cosign` (keyless, OIDC), plus an `artifacthub-repo.yml` pushed as a sibling `:artifacthub.io`-tagged OCI artifact via `oras` — the mechanism Artifact Hub documents for discovering and verifying OCI-based Helm repositories.
+- `.github/workflows/scorecard.yml` — OpenSSF Scorecard, triggered on push-to-`main`, a weekly cron, and branch-protection-rule changes, publishing results and uploading SARIF to the Security tab; a matching auto-updating badge on the README.
+- `.github/workflows/codeql.yml` — CodeQL for Go (`autobuild` mode), triggered on push/PR to `main`/`develop` plus a weekly cron.
+- SBOM generation (SPDX, via `anchore/sbom-action`) and build-provenance attestation (`actions/attest-build-provenance`) for every published container image and for the Helm chart in `publish-release.yml`.
+- `gosec` in `.golangci.yml` across every Go module. All 98 findings it surfaced against the current tree were triaged before the gate was enabled: genuine issues fixed directly (test-fixture file permissions, `deploy/sampleapp` no longer echoing an unvalidated query param into response bodies, an explicit-timeout `http.Server` replacing a bare `http.ListenAndServe`); deliberate, safe patterns narrowly `//nolint:gosec`'d with a stated reason each.
+- Community-health scaffolding: structured issue-form templates (`.github/ISSUE_TEMPLATE/bug_report.yml`, `feature_request.yml`), `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`, and `.github/release.yml` (GitHub's native PR-categorization config for auto-generated release notes — a supplement to this hand-written changelog, not a replacement).
+- README: License, Latest Release, and OpenSSF Scorecard badges; a table of contents; a `docker pull ghcr.io/sairam0424/ratecap-{core,sidecar,sampleapp}` alternative alongside the existing build-from-source Quick Start; a Helm OCI install mention (`helm install ratecap oci://ghcr.io/sairam0424/charts/ratecap`).
+- `deploy/helm/ratecap/.helmignore` — `helm package` had no ignore file and was silently bundling local dev-tooling cruft (e.g. `.claude-flow/`, `.swarm/`) into the shipped chart artifact.
+
+### Fixed
+
+- `deploy/helm/ratecap/Chart.yaml`'s `appVersion` was stuck at `2.2.0` since the chart's introduction (actual latest was v2.10.1) — now tracks the real current release, plus the `artifacthub.io/license` and `artifacthub.io/maintainers` annotations Artifact Hub expects.
+
 ## [2.10.1] — 2026-09-01 — E2E Audit Remediation
 
 Patch release: fixes every confirmed real defect from a full static-audit + live-production dry run against `main` @ v2.10.0 (`docs/superpowers/plans/2026-09-01-e2e-audit-dryrun-ledger.md`), remediated per `docs/superpowers/plans/2026-09-01-e2e-audit-remediation.md`. Bug fixes and doc corrections only — no new features, no behavior change to any request-path decision.

@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/core/grpcserver"
-	"github.com/ratecap/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/grpcserver"
+	"github.com/sairam0424/RateCap/services/core/limiter"
 )
 
 var testSigningKey = []byte("test-signing-key-do-not-use-in-production")

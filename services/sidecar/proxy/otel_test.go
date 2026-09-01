@@ -11,10 +11,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/sidecar/proxy"
-	"github.com/ratecap/sidecar/worker"
+	"github.com/sairam0424/RateCap/services/sidecar/proxy"
+	"github.com/sairam0424/RateCap/services/sidecar/worker"
 )
 
 // withTestTracerProvider installs a real, in-memory-exporting TracerProvider

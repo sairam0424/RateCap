@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/ratecap/core/otelinit"
+	"github.com/sairam0424/RateCap/services/core/otelinit"
 )
 
 func TestInit_NoEndpoint_SetsRealTracerProvider(t *testing.T) {

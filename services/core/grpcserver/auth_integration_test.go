@@ -10,11 +10,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/core/auth"
-	"github.com/ratecap/core/grpcserver"
-	"github.com/ratecap/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/auth"
+	"github.com/sairam0424/RateCap/services/core/grpcserver"
+	"github.com/sairam0424/RateCap/services/core/limiter"
 )
 
 func startTestServer(t *testing.T, secret string) (ratecapv1.RatecapServiceClient, func()) {
@@ -37,7 +37,7 @@ func startTestServer(t *testing.T, secret string) (ratecapv1.RatecapServiceClien
 	}
 
 	cleanup := func() {
-		conn.Close()
+		conn.Close() //nolint:gosec,errcheck // test-only bufconn client conn; process/test is tearing down either way
 		grpcServer.Stop()
 	}
 	return ratecapv1.NewRatecapServiceClient(conn), cleanup

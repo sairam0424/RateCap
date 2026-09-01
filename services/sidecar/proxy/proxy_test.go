@@ -16,13 +16,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/sidecar/decisionlog"
-	"github.com/ratecap/sidecar/metrics"
-	"github.com/ratecap/sidecar/negativecache"
-	"github.com/ratecap/sidecar/proxy"
-	"github.com/ratecap/sidecar/worker"
+	"github.com/sairam0424/RateCap/services/sidecar/decisionlog"
+	"github.com/sairam0424/RateCap/services/sidecar/metrics"
+	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
+	"github.com/sairam0424/RateCap/services/sidecar/proxy"
+	"github.com/sairam0424/RateCap/services/sidecar/worker"
 )
 
 type fakeRatecapClient struct {

@@ -8,7 +8,7 @@ import (
 )
 
 // Version is overridden at build time via
-// -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat VERSION)". The
+// -ldflags "-X github.com/sairam0424/RateCap/cli/cmd.Version=$(cat VERSION)". The
 // repo-root VERSION file is the single source of truth (established Phase 0);
 // this must never hardcode a second version string. cli/ is its own Go
 // module (separate go.mod), so go:embed can't reach the repo-root VERSION

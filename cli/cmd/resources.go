@@ -8,7 +8,7 @@ import (
 type commandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 func defaultRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
+	return exec.CommandContext(ctx, name, args...).Output() //nolint:gosec // name is always a fixed literal ("docker"/"redis-cli") from captureResources' own call sites; args come from the operator's own CLI flags, not remote input
 }
 
 type ResourceSnapshot struct {

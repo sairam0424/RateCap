@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/cli/cmd"
+	"github.com/sairam0424/RateCap/cli/cmd"
 )
 
 func TestBenchRun_AllModeReportsAllRequestsAgainstFakeSidecar(t *testing.T) {

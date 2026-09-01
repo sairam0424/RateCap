@@ -653,7 +653,7 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\x12ReleaseConcurrency\x12%.ratecap.v1.ReleaseConcurrencyRequest\x1a&.ratecap.v1.ReleaseConcurrencyResponse\x12Z\n" +
 	"\x0fSetDynamicLimit\x12\".ratecap.v1.SetDynamicLimitRequest\x1a#.ratecap.v1.SetDynamicLimitResponse\x12K\n" +
 	"\n" +
-	"RefundCost\x12\x1d.ratecap.v1.RefundCostRequest\x1a\x1e.ratecap.v1.RefundCostResponseB/Z-github.com/ratecap/proto/ratecap/v1;ratecapv1b\x06proto3"
+	"RefundCost\x12\x1d.ratecap.v1.RefundCostRequest\x1a\x1e.ratecap.v1.RefundCostResponseB:Z8github.com/sairam0424/RateCap/proto/ratecap/v1;ratecapv1b\x06proto3"
 
 var (
 	file_ratecap_v1_ratecap_proto_rawDescOnce sync.Once

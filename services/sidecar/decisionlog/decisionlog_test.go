@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/sidecar/decisionlog"
+	"github.com/sairam0424/RateCap/services/sidecar/decisionlog"
 )
 
 func TestLog_WritesJSONWithAllFields(t *testing.T) {

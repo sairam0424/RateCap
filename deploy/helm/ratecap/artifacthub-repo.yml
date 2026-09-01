@@ -1,0 +1,11 @@
+# Artifact Hub repository metadata — pushed to the OCI registry as a
+# sibling ":artifacthub.io"-tagged artifact by publish-release.yml, per
+# https://github.com/artifacthub/hub/blob/master/docs/helm_charts_repositories.md#oci-support
+#
+# repositoryID is intentionally omitted: it's only assigned after this
+# repository is registered in the Artifact Hub UI (a one-time manual step
+# outside this repo), and fabricating one would falsely claim an ID that
+# isn't ours.
+owners:
+  - name: sairam0424
+    email: uggesairam0000@gmail.com

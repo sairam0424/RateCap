@@ -1,6 +1,6 @@
 package proxy
 
-import "github.com/ratecap/core/limiter"
+import "github.com/sairam0424/RateCap/services/core/limiter"
 
 type Priority = limiter.Priority
 

@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ratecap/core/config"
+	"github.com/sairam0424/RateCap/services/core/config"
 )
 
 func writeTempConfig(t *testing.T, contents string) string {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ratecap.yaml")
-	if err := os.WriteFile(path, []byte(contents), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}
 	return path

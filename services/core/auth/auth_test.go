@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/ratecap/core/auth"
+	"github.com/sairam0424/RateCap/services/core/auth"
 )
 
 func TestUnaryServerInterceptor_RejectsMissingSecret(t *testing.T) {

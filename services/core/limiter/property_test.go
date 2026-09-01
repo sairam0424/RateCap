@@ -6,7 +6,7 @@ import (
 
 	"pgregory.net/rapid"
 
-	"github.com/ratecap/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/limiter"
 )
 
 // fakePropertyTokenBucketStore is an in-memory reference model of a token bucket:

@@ -1,8 +1,23 @@
 # RateCap
 
 [![CI](https://github.com/sairam0424/RateCap/actions/workflows/ci.yml/badge.svg)](https://github.com/sairam0424/RateCap/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/sairam0424/RateCap)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/sairam0424/RateCap)](https://github.com/sairam0424/RateCap/releases/latest)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sairam0424/RateCap/badge)](https://scorecard.dev/viewer/?uri=github.com/sairam0424/RateCap)
 
 A faithful, open-source recreation of [Stripe's four-tier rate-limiter and load-shedder architecture](https://stripe.com/blog/rate-limiters), built as a hybrid core-engine + sidecar system.
+
+## Table of contents
+
+- [Status](#status)
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Project layout](#project-layout)
+- [Comparison](#comparison)
+  - [Sources](#sources)
+- [Benchmarks](#benchmarks)
+  - [Shipped defaults (load-shedder engaged)](#shipped-defaults-load-shedder-engaged)
+- [Design docs](#design-docs)
 
 ## Status
 
@@ -18,6 +33,8 @@ App -> SDK -> sidecar (local) -> core (gRPC) -> Redis (tiers 1-3)
 
 ## Quick start
 
+Build from source and run the full demo stack locally:
+
 ```bash
 cd deploy
 bash generate-demo-certs.sh
@@ -26,6 +43,20 @@ curl http://localhost:3000/checkout             # repeat 6+ times to see a 429  
 curl http://localhost:3000/slow-report           # repeat concurrently to see a 429 (tier 2)
 curl "http://localhost:3000/fleet-demo?priority=sheddable"   # repeat concurrently to see a 503 (tier 3)
 curl http://localhost:3000/worker-demo           # repeat concurrently to see a 503 (tier 4)
+```
+
+Alternatively, pull the pre-built images straight from GHCR instead of building them locally:
+
+```bash
+docker pull ghcr.io/sairam0424/ratecap-core:latest
+docker pull ghcr.io/sairam0424/ratecap-sidecar:latest
+docker pull ghcr.io/sairam0424/ratecap-sampleapp:latest
+```
+
+Deploying to Kubernetes? Install the Helm chart directly from its OCI registry (no `gh-pages`/`index.yaml` repo to add first):
+
+```bash
+helm install ratecap oci://ghcr.io/sairam0424/charts/ratecap
 ```
 
 ## Project layout
@@ -80,7 +111,7 @@ The two tables below (**"Loosened limits"**) measure two request paths through t
 cd deploy
 bash generate-demo-certs.sh
 docker compose -f docker-compose.yml -f docker-compose.bench.yml up --build -d
-cd ../cli && go build -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
+cd ../cli && go build -ldflags "-X github.com/sairam0424/RateCap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
 
 # Tier 1 — Allow()
 /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 20000 --key-prefix bench-tier1
@@ -117,7 +148,7 @@ The two runs above use `docker-compose.bench.yml`'s loosened limits and never ac
 cd deploy
 bash generate-demo-certs.sh
 docker compose -f docker-compose.yml up --build -d
-cd ../cli && go build -ldflags "-X github.com/ratecap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
+cd ../cli && go build -ldflags "-X github.com/sairam0424/RateCap/cli/cmd.Version=$(cat ../VERSION)" -o /tmp/ratecapctl .
 
 # Tier 1 — Allow(), shipped defaults
 /tmp/ratecapctl bench run --sidecar-addr http://localhost:8080 --concurrency 50 --requests 2000 --key-prefix bench-default-tier1
