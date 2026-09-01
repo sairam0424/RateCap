@@ -12,6 +12,8 @@ A faithful, open-source recreation of [Stripe's four-tier rate-limiter and load-
 - [Status](#status)
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
+- [Downloading a release](#downloading-a-release)
+- [Verifying a release](#verifying-a-release)
 - [Project layout](#project-layout)
 - [Comparison](#comparison)
   - [Sources](#sources)
@@ -58,6 +60,58 @@ Deploying to Kubernetes? Install the Helm chart directly from its OCI registry (
 ```bash
 helm install ratecap oci://ghcr.io/sairam0424/charts/ratecap
 ```
+
+## Downloading a release
+
+Every tagged release (`vX.Y.Z`) publishes prebuilt `ratecapctl` binaries as GitHub Release assets, via `publish-release.yml`'s `publish-cli-binaries` job — no Go toolchain required:
+
+| Platform | Arch | Asset |
+| --- | --- | --- |
+| Linux | amd64 | `ratecapctl_linux_amd64` |
+| Linux | arm64 | `ratecapctl_linux_arm64` |
+| macOS | amd64 (Intel) | `ratecapctl_darwin_amd64` |
+| macOS | arm64 (Apple Silicon) | `ratecapctl_darwin_arm64` |
+| Windows | amd64 | `ratecapctl_windows_amd64.exe` |
+
+(`windows/arm64` is intentionally not built — no first-party consumer for it here.)
+
+```bash
+# example: Linux amd64 — swap in your platform's asset name and the release tag you want
+curl -LO https://github.com/sairam0424/RateCap/releases/download/v2.12.0/ratecapctl_linux_amd64
+chmod +x ratecapctl_linux_amd64
+./ratecapctl_linux_amd64 --help
+```
+
+Every release also ships `checksums.txt` (SHA-256 of all 5 binaries) and a `checksums.txt.bundle` signature over it — see [Verifying a release](#verifying-a-release) below. Prefer building from source instead? See the `go build -ldflags ...` invocation in [Benchmarks](#benchmarks).
+
+## Verifying a release
+
+Each release's `publish-cli-binaries` job signs `checksums.txt` with `cosign` (keyless) and attests build provenance (`actions/attest-build-provenance`) over every binary plus `checksums.txt`. Both are independent, equally valid ways to verify a downloaded binary — pick one.
+
+**Option A — verify `checksums.txt`'s signature, then check your binary's hash against it:**
+
+```bash
+# 1. Verify checksums.txt was signed by this repo's publish-release.yml workflow
+cosign verify-blob \
+  --bundle checksums.txt.bundle \
+  --certificate-identity-regexp "^https://github.com/sairam0424/RateCap/.github/workflows/publish-release.yml@refs/tags/v.*$" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+
+# 2. Confirm your downloaded binary's hash matches the now-verified checksums.txt
+sha256sum -c checksums.txt --ignore-missing        # Linux
+shasum -a 256 -c checksums.txt --ignore-missing    # macOS
+```
+
+**Option B — verify the binary's build provenance attestation directly:**
+
+```bash
+gh attestation verify ratecapctl_linux_amd64 \
+  --repo sairam0424/RateCap \
+  --signer-workflow sairam0424/RateCap/.github/workflows/publish-release.yml
+```
+
+Requires [`cosign`](https://docs.sigstore.dev/system_config/installation/) for Option A, or the [GitHub CLI](https://cli.github.com/) (`gh`) for Option B. Both commands above have been run against placeholder artifacts to confirm their flag syntax is correct; the actual cryptographic proof only exists once a real `vX.Y.Z` tag has published these assets.
 
 ## Project layout
 
