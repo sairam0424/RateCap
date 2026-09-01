@@ -5,3 +5,4 @@ Task 2: APPROVED — Replace broken Helm gh-pages publish with OCI push to GHCR 
 Task 3: APPROVED — Add OpenSSF Scorecard — commit 18c7564
 Task 4: APPROVED — Add CodeQL for Go — commit 3c78bc6
 Task 5: APPROVED — SBOM + build provenance on release artifacts — commit 86f919d
+Task 6: APPROVED — Add gosec to .golangci.yml, fix real findings before enabling — commit 3cccc33
