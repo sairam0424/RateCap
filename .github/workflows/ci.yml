@@ -288,3 +288,56 @@ jobs:
         run: |
           docker compose -f deploy/docker-compose.yml down -v
           rm -rf deploy/certs
+
+  all-checks-pass:
+    # Single stable status-check context for branch protection, so a
+    # ruleset can require just this job instead of enumerating every matrix
+    # leg of build-and-test/golangci-lint/docker-build individually.
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
+      - core-integration-tests
+      - gofmt
+      - golangci-lint
+      - python-sdk
+      - helm-lint
+      - mutation-testing
+      - docker-build
+      - e2e-smoke
+    # always() is required: without it, this job is skipped whenever any
+    # dependency fails, and GitHub branch protection treats a skipped
+    # required check as passing. This job exists specifically to turn that
+    # "skipped" into a real "failure".
+    if: always()
+    steps:
+      - name: Verify all required jobs succeeded
+        run: |
+          failed=0
+
+          check() {
+            local job="$1"
+            local result="$2"
+            if [ "$result" != "success" ]; then
+              echo "FAIL: $job -> $result" >&2
+              failed=1
+            else
+              echo "OK: $job -> $result"
+            fi
+          }
+
+          check "build-and-test" "${{ needs.build-and-test.result }}"
+          check "core-integration-tests" "${{ needs.core-integration-tests.result }}"
+          check "gofmt" "${{ needs.gofmt.result }}"
+          check "golangci-lint" "${{ needs.golangci-lint.result }}"
+          check "python-sdk" "${{ needs.python-sdk.result }}"
+          check "helm-lint" "${{ needs.helm-lint.result }}"
+          check "mutation-testing" "${{ needs.mutation-testing.result }}"
+          check "docker-build" "${{ needs.docker-build.result }}"
+          check "e2e-smoke" "${{ needs.e2e-smoke.result }}"
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more required jobs did not succeed." >&2
+            exit 1
+          fi
+
+          echo "All required jobs succeeded."
