@@ -82,7 +82,7 @@ chmod +x ratecapctl_linux_amd64
 ./ratecapctl_linux_amd64 --help
 ```
 
-Every release also ships `checksums.txt` (SHA-256 of all 5 binaries) and a `checksums.txt.bundle` signature over it — see [Verifying a release](#verifying-a-release) below. Prefer building from source instead? See the `go build -ldflags ...` invocation in [Benchmarks](#benchmarks).
+Every release also ships `checksums.txt` (SHA-256 of all 5 binaries), a `checksums.txt.bundle` signature over it, and a `checksums.txt.sig` (a second, independent keyless signature over the same file, in the plain suffix that automated supply-chain scanners such as OpenSSF Scorecard recognize) — see [Verifying a release](#verifying-a-release) below. Prefer building from source instead? See the `go build -ldflags ...` invocation in [Benchmarks](#benchmarks).
 
 ## Verifying a release
 
