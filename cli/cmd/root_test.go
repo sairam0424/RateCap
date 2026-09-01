@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ratecap/cli/cmd"
+	"github.com/sairam0424/RateCap/cli/cmd"
 )
 
 func TestRootCmd_VersionFlagPrintsVersion(t *testing.T) {

@@ -3,7 +3,7 @@ package tlsconfig_test
 import (
 	"testing"
 
-	"github.com/ratecap/sidecar/tlsconfig"
+	"github.com/sairam0424/RateCap/services/sidecar/tlsconfig"
 )
 
 func TestEnvVarsPartiallySet_AllEmptyIsNotPartial(t *testing.T) {

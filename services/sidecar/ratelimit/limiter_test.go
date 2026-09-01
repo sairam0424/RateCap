@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/sidecar/ratelimit"
+	"github.com/sairam0424/RateCap/services/sidecar/ratelimit"
 )
 
 func fixedClock(t time.Time) func() time.Time {

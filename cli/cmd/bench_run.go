@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/time/rate"
 
-	ratecap "github.com/ratecap/sdk-go"
+	ratecap "github.com/sairam0424/RateCap/packages/sdks/go"
 )
 
 type benchResult struct {

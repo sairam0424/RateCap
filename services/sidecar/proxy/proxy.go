@@ -13,13 +13,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/sidecar/decisionlog"
-	"github.com/ratecap/sidecar/metrics"
-	"github.com/ratecap/sidecar/negativecache"
-	"github.com/ratecap/sidecar/shadow"
-	"github.com/ratecap/sidecar/worker"
+	"github.com/sairam0424/RateCap/services/sidecar/decisionlog"
+	"github.com/sairam0424/RateCap/services/sidecar/metrics"
+	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
+	"github.com/sairam0424/RateCap/services/sidecar/shadow"
+	"github.com/sairam0424/RateCap/services/sidecar/worker"
 )
 
 type ratecapClient interface {
@@ -139,7 +139,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Fixed, small-cardinality label only — never the caller-controlled key,
 	// a header, or a query param (SECURITY.md's decision-log stance applies
 	// equally to span data leaving the process via OTLP export).
-	callCtx, span := otel.Tracer("github.com/ratecap/sidecar/proxy").Start(
+	callCtx, span := otel.Tracer("github.com/sairam0424/RateCap/services/sidecar/proxy").Start(
 		r.Context(), "ratecap.sidecar.check_rate_limit", trace.WithSpanKind(trace.SpanKindClient),
 	)
 	span.SetAttributes(attribute.String("ratecap.priority", priorityLabel(priority)))

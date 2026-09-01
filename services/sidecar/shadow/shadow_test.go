@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/sidecar/shadow"
+	"github.com/sairam0424/RateCap/services/sidecar/shadow"
 )
 
 func TestGlobalOverrideEnabled_TrueWhenEnvSet(t *testing.T) {

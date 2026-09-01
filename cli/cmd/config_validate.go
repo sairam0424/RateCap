@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ratecap/core/config"
+	"github.com/sairam0424/RateCap/services/core/config"
 )
 
 func newConfigValidateCmd() *cobra.Command {

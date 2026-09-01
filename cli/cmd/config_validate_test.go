@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ratecap/cli/cmd"
+	"github.com/sairam0424/RateCap/cli/cmd"
 )
 
 func writeTempConfig(t *testing.T, contents string) string {

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/sidecar/tlsconfig"
+	"github.com/sairam0424/RateCap/services/sidecar/tlsconfig"
 )
 
 func writeSelfSignedKeyPair(t *testing.T, dir, certFile, keyFile, dnsName string) (certPath, keyPath string) {

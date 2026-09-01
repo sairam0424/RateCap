@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	ratecap "github.com/ratecap/sdk-go"
+	ratecap "github.com/sairam0424/RateCap/packages/sdks/go"
 )
 
 func TestAllow_ReturnsTrueOn200(t *testing.T) {

@@ -9,10 +9,10 @@ import (
 
 	"google.golang.org/grpc"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/sidecar/proxy"
-	"github.com/ratecap/sidecar/worker"
+	"github.com/sairam0424/RateCap/services/sidecar/proxy"
+	"github.com/sairam0424/RateCap/services/sidecar/worker"
 )
 
 type fakeCoreClient struct {

@@ -17,17 +17,17 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/sidecar/admin"
-	"github.com/ratecap/sidecar/auth"
-	"github.com/ratecap/sidecar/metrics"
-	"github.com/ratecap/sidecar/negativecache"
-	"github.com/ratecap/sidecar/otelinit"
-	"github.com/ratecap/sidecar/proxy"
-	"github.com/ratecap/sidecar/ratelimit"
-	"github.com/ratecap/sidecar/tlsconfig"
-	"github.com/ratecap/sidecar/worker"
+	"github.com/sairam0424/RateCap/services/sidecar/admin"
+	"github.com/sairam0424/RateCap/services/sidecar/auth"
+	"github.com/sairam0424/RateCap/services/sidecar/metrics"
+	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
+	"github.com/sairam0424/RateCap/services/sidecar/otelinit"
+	"github.com/sairam0424/RateCap/services/sidecar/proxy"
+	"github.com/sairam0424/RateCap/services/sidecar/ratelimit"
+	"github.com/sairam0424/RateCap/services/sidecar/tlsconfig"
+	"github.com/sairam0424/RateCap/services/sidecar/worker"
 )
 
 // newHealthzHandler treats every connectivity.State except TransientFailure

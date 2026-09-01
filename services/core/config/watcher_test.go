@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/core/config"
+	"github.com/sairam0424/RateCap/services/core/config"
 )
 
 func TestWatch_TriggersOnChangeOnFileWrite(t *testing.T) {

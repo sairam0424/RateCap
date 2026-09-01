@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/sidecar/negativecache"
+	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
 )
 
 func TestIsDenied_FalseForUnknownKey(t *testing.T) {

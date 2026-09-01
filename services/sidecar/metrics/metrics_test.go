@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/ratecap/sidecar/metrics"
+	"github.com/sairam0424/RateCap/services/sidecar/metrics"
 )
 
 func TestRecordDecision_IncrementsCounterForTierAndAction(t *testing.T) {

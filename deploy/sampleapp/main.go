@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	ratecap "github.com/ratecap/sdk-go"
+	ratecap "github.com/sairam0424/RateCap/packages/sdks/go"
 )
 
 var fleetDemoCounter atomic.Int64

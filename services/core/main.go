@@ -21,16 +21,16 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/core/auth"
-	"github.com/ratecap/core/config"
-	"github.com/ratecap/core/grpcserver"
-	"github.com/ratecap/core/limiter"
-	coremetrics "github.com/ratecap/core/metrics"
-	"github.com/ratecap/core/otelinit"
-	"github.com/ratecap/core/store"
-	"github.com/ratecap/core/tlsconfig"
+	"github.com/sairam0424/RateCap/services/core/auth"
+	"github.com/sairam0424/RateCap/services/core/config"
+	"github.com/sairam0424/RateCap/services/core/grpcserver"
+	"github.com/sairam0424/RateCap/services/core/limiter"
+	coremetrics "github.com/sairam0424/RateCap/services/core/metrics"
+	"github.com/sairam0424/RateCap/services/core/otelinit"
+	"github.com/sairam0424/RateCap/services/core/store"
+	"github.com/sairam0424/RateCap/services/core/tlsconfig"
 )
 
 // runRedisHealthLoop periodically pings Redis and reflects the result into

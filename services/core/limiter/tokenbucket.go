@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	coremetrics "github.com/ratecap/core/metrics"
+	coremetrics "github.com/sairam0424/RateCap/services/core/metrics"
 )
 
 type checker interface {

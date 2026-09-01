@@ -14,7 +14,7 @@ RateCap: a hybrid core-engine + sidecar rate-limiter/load-shedder, faithfully re
 - **format check**: `gofmt -l .` must print nothing — this is a CI gate
 - **lint**: `golangci-lint run` from inside each Go module directory (config: repo-root `.golangci.yml`) — also a CI gate, matrixed the same way as build-and-test
 - **Python SDK** (`packages/sdks/python` — not a Go module, not in `go.work`): `pip install -e . && python -m unittest discover -s tests -v`
-- **regenerate proto**: `protoc -I proto --go_out=proto --go_opt=module=github.com/ratecap/proto --go-grpc_out=proto --go-grpc_opt=module=github.com/ratecap/proto ratecap/v1/ratecap.proto` (run from repo root; requires `protoc-gen-go` and `protoc-gen-go-grpc` on `PATH`; `-I proto` keeps the file descriptor's canonical name as `ratecap/v1/ratecap.proto`, not `proto/ratecap/v1/ratecap.proto`)
+- **regenerate proto**: `protoc -I proto --go_out=proto --go_opt=module=github.com/sairam0424/RateCap/proto --go-grpc_out=proto --go-grpc_opt=module=github.com/sairam0424/RateCap/proto ratecap/v1/ratecap.proto` (run from repo root; requires `protoc-gen-go` and `protoc-gen-go-grpc` on `PATH`; `-I proto` keeps the file descriptor's canonical name as `ratecap/v1/ratecap.proto`, not `proto/ratecap/v1/ratecap.proto`)
 - **run the demo stack**: `cd deploy && bash generate-demo-certs.sh && docker compose up --build` — the cert-gen step is required first: `docker-compose.yml` hardcodes mTLS env vars for both services, so startup fails on missing cert files without it. (The README's own top-level Quick Start omits this step and is broken as written; its Benchmarks section and CI's e2e-smoke job both include it.)
 
 ## Scope discipline
@@ -30,7 +30,7 @@ v1 shipped locked to Stripe's exact 4 mechanisms. v2 additions (e.g. Tier 2's bo
 
 ## Conventions
 
-- Go module naming: `github.com/ratecap/<service>`
-- Cross-module deps within this repo: `go mod edit -replace github.com/ratecap/X=../../X`
+- Go module naming: `github.com/sairam0424/RateCap/<path>` (mirrors the repo path, e.g. `services/core`, `services/sidecar`, `proto`, `packages/sdks/go`, `cli`, `deploy/sampleapp`)
+- Cross-module deps within this repo: `go mod edit -replace github.com/sairam0424/RateCap/X=../../X`
 - No comments except non-obvious WHY (hidden constraints, subtle invariants)
 - Files: 200-400 lines typical, 800 max

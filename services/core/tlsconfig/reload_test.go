@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ratecap/core/tlsconfig"
+	"github.com/sairam0424/RateCap/services/core/tlsconfig"
 )
 
 func TestLoad_GetCertificateReturnsCurrentCertAfterFileChange(t *testing.T) {

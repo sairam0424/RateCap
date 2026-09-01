@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 )
 
 type adminClient interface {

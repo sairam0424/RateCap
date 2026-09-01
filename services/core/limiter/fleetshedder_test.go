@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ratecap/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/limiter"
 )
 
 type fakeFleetStore struct {

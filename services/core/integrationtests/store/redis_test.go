@@ -16,9 +16,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/ratecap/core/limiter"
-	coremetrics "github.com/ratecap/core/metrics"
-	"github.com/ratecap/core/store"
+	"github.com/sairam0424/RateCap/services/core/limiter"
+	coremetrics "github.com/sairam0424/RateCap/services/core/metrics"
+	"github.com/sairam0424/RateCap/services/core/store"
 )
 
 // histogramSampleCount reads the cumulative observation count for one label

@@ -50,8 +50,8 @@ curl http://localhost:3000/checkout   # repeat 6+ times to see a 429
 Only needed if you change `proto/ratecap/v1/ratecap.proto`. Requires `protoc`, `protoc-gen-go`, and `protoc-gen-go-grpc` on `PATH`:
 
 ```bash
-protoc -I proto --go_out=proto --go_opt=module=github.com/ratecap/proto \
-  --go-grpc_out=proto --go-grpc_opt=module=github.com/ratecap/proto \
+protoc -I proto --go_out=proto --go_opt=module=github.com/sairam0424/RateCap/proto \
+  --go-grpc_out=proto --go-grpc_opt=module=github.com/sairam0424/RateCap/proto \
   ratecap/v1/ratecap.proto
 ```
 

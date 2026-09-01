@@ -10,9 +10,9 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/ratecap/core/config"
-	"github.com/ratecap/core/limiter"
-	"github.com/ratecap/core/store"
+	"github.com/sairam0424/RateCap/services/core/config"
+	"github.com/sairam0424/RateCap/services/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/store"
 )
 
 func TestMain_FailsClosedOnMissingFleetShedderBlock(t *testing.T) {

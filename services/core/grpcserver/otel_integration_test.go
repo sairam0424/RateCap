@@ -15,10 +15,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	ratecapv1 "github.com/ratecap/proto/ratecap/v1"
+	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
-	"github.com/ratecap/core/grpcserver"
-	"github.com/ratecap/core/limiter"
+	"github.com/sairam0424/RateCap/services/core/grpcserver"
+	"github.com/sairam0424/RateCap/services/core/limiter"
 )
 
 // startOTelTestServer wires otelgrpc's stats handlers onto both ends of a
