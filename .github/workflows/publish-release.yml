@@ -126,7 +126,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RATECAP_RELEASE_TAG: ${{ github.ref_name }}
           RATECAP_REPO: ${{ github.repository }}
-        run: gh release upload "$RATECAP_RELEASE_TAG" ratecapctl_* checksums.txt checksums.txt.bundle --repo "$RATECAP_REPO"
+        run: |
+          # gh release upload requires the release object to already exist —
+          # it does NOT auto-create one. This repo's own release process
+          # creates the curated GitHub Release by hand after CI runs, so on
+          # the very first push of a tag, no release exists yet at this
+          # point. Create a placeholder (auto-generated notes) if needed;
+          # the later hand-curated `gh release edit` step overwrites its
+          # notes without needing to delete/recreate it.
+          if ! gh release view "$RATECAP_RELEASE_TAG" --repo "$RATECAP_REPO" >/dev/null 2>&1; then
+            gh release create "$RATECAP_RELEASE_TAG" --repo "$RATECAP_REPO" --title "$RATECAP_RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RATECAP_RELEASE_TAG" ratecapctl_* checksums.txt checksums.txt.bundle --repo "$RATECAP_REPO"
 
   publish-helm-chart:
     # OCI push replaces the old helm/chart-releaser-action publish, which
