@@ -15,6 +15,29 @@ import (
 
 var fleetDemoCounter atomic.Int64
 
+type releaseKey struct {
+	key string
+	tok string
+}
+
+// releaseAll sends one /release call per reservation, using the headers
+// services/sidecar/proxy/proxy.go's ReleaseHandler actually reads
+// (X-RateCap-Concurrency-Key/-Token) — a query-param release is silently a
+// no-op there (400, discarded below), which is how this leaked before.
+func releaseAll(keys []releaseKey, sidecarBase string) {
+	for _, rk := range keys {
+		releaseReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sidecarBase+"/release", nil)
+		if err != nil {
+			continue
+		}
+		releaseReq.Header.Set("X-RateCap-Concurrency-Key", rk.key)
+		releaseReq.Header.Set("X-RateCap-Concurrency-Token", rk.tok)
+		if relResp, err := http.DefaultClient.Do(releaseReq); err == nil {
+			relResp.Body.Close() //nolint:errcheck // best-effort release response; the release call itself already succeeded by the time we get here
+		}
+	}
+}
+
 func main() {
 	sidecarAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if sidecarAddr == "" {
@@ -95,38 +118,33 @@ func main() {
 			return
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
-			w.WriteHeader(resp.StatusCode)
-			fmt.Fprintf(w, "shed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
-			return
-		}
-
-		var releaseParams []url.Values
+		// Reservation headers must be read before the status-code branch below:
+		// a Tier-3 shed (503) still carries the Tier-2 per-key reservation the
+		// core granted before Tier 3 rejected the request (proxy.go sets
+		// Concurrency-Token-N/Key-N ahead of its final action switch), so
+		// skipping this on non-200 leaks that slot until the reaper TTL expires.
+		var releaseKeys []releaseKey
 		for i := 0; ; i++ {
 			tok := resp.Header.Get(fmt.Sprintf("Concurrency-Token-%d", i))
 			if tok == "" {
 				break
 			}
 			resKey := resp.Header.Get(fmt.Sprintf("Concurrency-Key-%d", i))
-			params := url.Values{}
-			params.Set("key", resKey)
-			params.Set("token", tok)
-			releaseParams = append(releaseParams, params)
+			releaseKeys = append(releaseKeys, releaseKey{key: resKey, tok: tok})
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
+			w.WriteHeader(resp.StatusCode)
+			fmt.Fprintf(w, "shed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
+			releaseAll(releaseKeys, sidecarBase)
+			return
 		}
 		resp.Body.Close() //nolint:errcheck // headers already read; Close error carries no new information
 
 		time.Sleep(2 * time.Second)
 
-		for _, params := range releaseParams {
-			releaseReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sidecarBase+"/release?"+params.Encode(), nil)
-			if err != nil {
-				continue
-			}
-			if relResp, err := http.DefaultClient.Do(releaseReq); err == nil {
-				relResp.Body.Close() //nolint:errcheck // best-effort release response; the release call itself already succeeded by the time we get here
-			}
-		}
+		releaseAll(releaseKeys, sidecarBase)
 
 		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
