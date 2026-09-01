@@ -16,6 +16,13 @@ spec:
         - name: sidecar
           image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.sidecar.resources.requests.cpu }}
+              memory: {{ .Values.sidecar.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.sidecar.resources.limits.cpu }}
+              memory: {{ .Values.sidecar.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.sidecar.port }}
           env:

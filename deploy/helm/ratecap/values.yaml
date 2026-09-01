@@ -4,12 +4,30 @@ redis:
     tag: 7-alpine
     pullPolicy: IfNotPresent
   port: 6379
+  # redis is single-threaded and this chart's demo workload is small; these
+  # defaults are conservative headroom, not a sizing recommendation.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
   sentinel:
     enabled: false
     replicas: 3
     port: 26379
     masterName: mymaster
     quorum: 2
+    # sentinel itself is a lightweight monitoring process, far lighter than
+    # the redis server it watches.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
 
 core:
   image:
@@ -19,6 +37,15 @@ core:
   grpcPort: 9090
   healthPort: 9091
   replicaCount: 1
+  # core holds the token-bucket/concurrency/fleet-shedder state and talks to
+  # Redis on the hot path — gets the largest allowance of the four services.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 sidecar:
   image:
@@ -28,6 +55,13 @@ sidecar:
   port: 8080
   maxInflightRequests: 500
   replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 sampleapp:
   enabled: false
@@ -36,6 +70,14 @@ sampleapp:
     tag: latest
     pullPolicy: IfNotPresent
   port: 3000
+  # sampleapp is a thin demo relay with no state of its own.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 
 # config.yaml is the content of ratecap.yaml, mounted into core via a
 # ConfigMap. Defaults mirror deploy/ratecap.yaml (the docker-compose demo's

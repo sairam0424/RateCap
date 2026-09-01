@@ -17,6 +17,13 @@ spec:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.redis.resources.requests.cpu }}
+              memory: {{ .Values.redis.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.redis.resources.limits.cpu }}
+              memory: {{ .Values.redis.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.redis.port }}
 ---
@@ -64,6 +71,13 @@ spec:
               else
                 exec redis-server --port {{ .Values.redis.port }} --replicaof {{ .Release.Name }}-redis-0.{{ .Release.Name }}-redis-headless {{ .Values.redis.port }}
               fi
+          resources:
+            requests:
+              cpu: {{ .Values.redis.resources.requests.cpu }}
+              memory: {{ .Values.redis.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.redis.resources.limits.cpu }}
+              memory: {{ .Values.redis.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.redis.port }}
 ---
@@ -112,6 +126,13 @@ spec:
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
           command: ["redis-sentinel", "/etc/sentinel/sentinel.conf"]
+          resources:
+            requests:
+              cpu: {{ .Values.redis.sentinel.resources.requests.cpu }}
+              memory: {{ .Values.redis.sentinel.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.redis.sentinel.resources.limits.cpu }}
+              memory: {{ .Values.redis.sentinel.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.redis.sentinel.port }}
           volumeMounts:

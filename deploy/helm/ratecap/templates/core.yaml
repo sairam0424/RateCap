@@ -16,6 +16,13 @@ spec:
         - name: core
           image: "{{ .Values.core.image.repository }}:{{ .Values.core.image.tag }}"
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.core.resources.requests.cpu }}
+              memory: {{ .Values.core.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.core.resources.limits.cpu }}
+              memory: {{ .Values.core.resources.limits.memory }}
           ports:
             - containerPort: {{ .Values.core.grpcPort }}
             - containerPort: {{ .Values.core.healthPort }}
