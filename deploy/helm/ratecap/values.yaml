@@ -31,7 +31,14 @@ redis:
 
 core:
   image:
-    repository: ratecap-core
+    # Fully registry-qualified: an unqualified name here resolves against
+    # Docker Hub by default (both Kubernetes' image pull and Artifact Hub's
+    # vulnerability scanner do this), where this image has never existed —
+    # it's only ever published to GHCR. `helm install` with default values
+    # silently produced ImagePullBackOff until this was qualified; local
+    # kind/docker-compose testing never caught it because those load
+    # locally-built images directly, bypassing any registry pull.
+    repository: ghcr.io/sairam0424/ratecap-core
     tag: latest
     pullPolicy: IfNotPresent
   grpcPort: 9090
@@ -49,7 +56,7 @@ core:
 
 sidecar:
   image:
-    repository: ratecap-sidecar
+    repository: ghcr.io/sairam0424/ratecap-sidecar
     tag: latest
     pullPolicy: IfNotPresent
   port: 8080
@@ -66,7 +73,7 @@ sidecar:
 sampleapp:
   enabled: false
   image:
-    repository: ratecap-sampleapp
+    repository: ghcr.io/sairam0424/ratecap-sampleapp
     tag: latest
     pullPolicy: IfNotPresent
   port: 3000
