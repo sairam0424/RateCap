@@ -6,3 +6,4 @@ Task 3: APPROVED — Fix CHANGELOG.md's phantom [2.4.1] entry — commit 6cc74af
 Task 4: APPROVED — Fix README.md's broken Quick Start — commit 0f3aaaa
 Task 5: APPROVED — Fix deploy/sampleapp/main.go's /fleet-demo release wire format and reservation leak — commit d577a62
 Task 6: APPROVED — Fix deploy/sampleapp/main.go's dropped response headers on relay — commit b0573a6
+Task 7: APPROVED — Fix Go SDK's dropped RateLimit-Reset — commit 0c79271
