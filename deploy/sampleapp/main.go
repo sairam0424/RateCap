@@ -15,6 +15,47 @@ import (
 
 var fleetDemoCounter atomic.Int64
 
+type releaseKey struct {
+	key string
+	tok string
+}
+
+// relayedCheckHeaders lists the /check response headers a caller-facing demo
+// endpoint must forward — the sidecar's own proxy.go (X-RateCap-Shed-Tier,
+// Retry-After-Ms, RateLimit-Reset) sets these on a decision-by-decision basis,
+// so any given response may carry zero, one, or several of them.
+var relayedCheckHeaders = []string{"X-RateCap-Shed-Tier", "Retry-After-Ms", "RateLimit-Reset"}
+
+// relayCheckHeaders copies whichever of relayedCheckHeaders are present on the
+// sidecar's /check response onto the outgoing response, for every status code
+// — must be called before the first WriteHeader/Write on w, since headers set
+// afterward are silently dropped by net/http.
+func relayCheckHeaders(w http.ResponseWriter, checkResp http.Header) {
+	for _, h := range relayedCheckHeaders {
+		if v := checkResp.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+}
+
+// releaseAll sends one /release call per reservation, using the headers
+// services/sidecar/proxy/proxy.go's ReleaseHandler actually reads
+// (X-RateCap-Concurrency-Key/-Token) — a query-param release is silently a
+// no-op there (400, discarded below), which is how this leaked before.
+func releaseAll(keys []releaseKey, sidecarBase string) {
+	for _, rk := range keys {
+		releaseReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sidecarBase+"/release", nil)
+		if err != nil {
+			continue
+		}
+		releaseReq.Header.Set("X-RateCap-Concurrency-Key", rk.key)
+		releaseReq.Header.Set("X-RateCap-Concurrency-Token", rk.tok)
+		if relResp, err := http.DefaultClient.Do(releaseReq); err == nil {
+			relResp.Body.Close() //nolint:errcheck // best-effort release response; the release call itself already succeeded by the time we get here
+		}
+	}
+}
+
 func main() {
 	sidecarAddr := os.Getenv("RATECAP_SIDECAR_ADDR")
 	if sidecarAddr == "" {
@@ -28,7 +69,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		allowed, retryAfterMs, err := client.Allow(ctx, "demo-user")
+		allowed, retryAfterMs, _, err := client.Allow(ctx, "demo-user")
 		if err != nil {
 			http.Error(w, "rate limit check failed", http.StatusInternalServerError)
 			return
@@ -95,38 +136,35 @@ func main() {
 			return
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
-			w.WriteHeader(resp.StatusCode)
-			fmt.Fprintf(w, "shed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
-			return
-		}
-
-		var releaseParams []url.Values
+		// Reservation headers must be read before the status-code branch below:
+		// a Tier-3 shed (503) still carries the Tier-2 per-key reservation the
+		// core granted before Tier 3 rejected the request (proxy.go sets
+		// Concurrency-Token-N/Key-N ahead of its final action switch), so
+		// skipping this on non-200 leaks that slot until the reaper TTL expires.
+		var releaseKeys []releaseKey
 		for i := 0; ; i++ {
 			tok := resp.Header.Get(fmt.Sprintf("Concurrency-Token-%d", i))
 			if tok == "" {
 				break
 			}
 			resKey := resp.Header.Get(fmt.Sprintf("Concurrency-Key-%d", i))
-			params := url.Values{}
-			params.Set("key", resKey)
-			params.Set("token", tok)
-			releaseParams = append(releaseParams, params)
+			releaseKeys = append(releaseKeys, releaseKey{key: resKey, tok: tok})
+		}
+
+		relayCheckHeaders(w, resp.Header)
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
+			w.WriteHeader(resp.StatusCode)
+			fmt.Fprintf(w, "shed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
+			releaseAll(releaseKeys, sidecarBase)
+			return
 		}
 		resp.Body.Close() //nolint:errcheck // headers already read; Close error carries no new information
 
 		time.Sleep(2 * time.Second)
 
-		for _, params := range releaseParams {
-			releaseReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sidecarBase+"/release?"+params.Encode(), nil)
-			if err != nil {
-				continue
-			}
-			if relResp, err := http.DefaultClient.Do(releaseReq); err == nil {
-				relResp.Body.Close() //nolint:errcheck // best-effort release response; the release call itself already succeeded by the time we get here
-			}
-		}
+		releaseAll(releaseKeys, sidecarBase)
 
 		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priority) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
 	})
@@ -149,6 +187,8 @@ func main() {
 			return
 		}
 		defer resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
+
+		relayCheckHeaders(w, resp.Header)
 
 		if resp.StatusCode != http.StatusOK {
 			w.WriteHeader(resp.StatusCode)

@@ -17,7 +17,7 @@ func TestAllow_ReturnsTrueOn200(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	allowed, _, err := client.Allow(context.Background(), "user-1")
+	allowed, _, _, err := client.Allow(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,15 +26,16 @@ func TestAllow_ReturnsTrueOn200(t *testing.T) {
 	}
 }
 
-func TestAllow_ReturnsFalseWithRetryAfterOn429(t *testing.T) {
+func TestAllow_ReturnsFalseWithRetryAfterAndRateLimitResetOn429(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After-Ms", "750")
+		w.Header().Set("RateLimit-Reset", "3")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	allowed, retryAfterMs, err := client.Allow(context.Background(), "user-1")
+	allowed, retryAfterMs, rateLimitReset, err := client.Allow(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -43,6 +44,9 @@ func TestAllow_ReturnsFalseWithRetryAfterOn429(t *testing.T) {
 	}
 	if retryAfterMs != 750 {
 		t.Errorf("expected retryAfterMs=750, got %d", retryAfterMs)
+	}
+	if rateLimitReset != 3 {
+		t.Errorf("expected rateLimitReset=3, got %d", rateLimitReset)
 	}
 }
 
@@ -53,7 +57,7 @@ func TestAllow_ReturnsFalseOn503(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	allowed, _, err := client.Allow(context.Background(), "user-1")
+	allowed, _, _, err := client.Allow(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -71,7 +75,7 @@ func TestAllow_RequestsSkipReservations(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
+	if _, _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -116,9 +120,10 @@ func TestAcquire_ReturnsAllowedTicketOn200(t *testing.T) {
 	}
 }
 
-func TestAcquire_ReturnsRejectedTicketWithRetryAfterOn429(t *testing.T) {
+func TestAcquire_ReturnsRejectedTicketWithRetryAfterAndRateLimitResetOn429(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After-Ms", "750")
+		w.Header().Set("RateLimit-Reset", "3")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
@@ -133,6 +138,9 @@ func TestAcquire_ReturnsRejectedTicketWithRetryAfterOn429(t *testing.T) {
 	}
 	if ticket.RetryAfterMs != 750 {
 		t.Errorf("expected RetryAfterMs=750, got %d", ticket.RetryAfterMs)
+	}
+	if ticket.RateLimitReset != 3 {
+		t.Errorf("expected RateLimitReset=3, got %d", ticket.RateLimitReset)
 	}
 }
 
@@ -268,7 +276,7 @@ func TestAllow_WithCost_SendsCostQueryParam(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithCost(5)); err != nil {
+	if _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithCost(5)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -286,7 +294,7 @@ func TestAllow_WithoutCostOption_OmitsCostQueryParam(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
+	if _, _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -304,7 +312,7 @@ func TestAllow_WithPriority_SendsPriorityHeader(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithPriority(ratecap.Critical)); err != nil {
+	if _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithPriority(ratecap.Critical)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

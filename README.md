@@ -20,6 +20,7 @@ App -> SDK -> sidecar (local) -> core (gRPC) -> Redis (tiers 1-3)
 
 ```bash
 cd deploy
+bash generate-demo-certs.sh
 docker compose up --build
 curl http://localhost:3000/checkout             # repeat 6+ times to see a 429  (tier 1)
 curl http://localhost:3000/slow-report           # repeat concurrently to see a 429 (tier 2)
@@ -33,6 +34,8 @@ curl http://localhost:3000/worker-demo           # repeat concurrently to see a 
 - `services/core/` — central engine: limiter logic, Redis state, config hot-reload
 - `services/sidecar/` — local proxy: priority resolution, shadow-mode override
 - `packages/sdks/go/` — thin Go client SDK
+- `packages/sdks/python/` — thin Python client SDK
+- `cli/` — `ratecapctl`, the operator CLI (benchmark runner, TLS cert preflight, admin lever)
 - `deploy/` — docker-compose demo and sample app
 
 ## Comparison

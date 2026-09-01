@@ -76,6 +76,18 @@ func verifyToken(token string, signingKey []byte) bool {
 }
 
 func (s *Server) CheckRateLimit(ctx context.Context, req *ratecapv1.CheckRateLimitRequest) (*ratecapv1.CheckRateLimitResponse, error) {
+	// Defense in depth: the sidecar's own resolveCost already clamps a
+	// non-positive cost to 1 before it ever reaches this RPC, but that's
+	// sidecar-side validation only — any other authenticated direct gRPC
+	// caller (SECURITY.md's shared-secret trust model covers auth, not input
+	// shape) could send Cost<=0 straight through. A zero cost lets the token
+	// bucket Lua script ALLOW forever without decrementing; a negative cost
+	// inflates tokens past burst until the next call's refill re-clamp — a
+	// real, if transient, bypass this rejection closes outright.
+	if req.Cost <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "cost must be greater than 0")
+	}
+
 	// PRIORITY_UNSPECIFIED (a caller that never set the field) and SHEDDABLE
 	// both map to limiter.Sheddable — the same safe default either way, now
 	// an explicit case rather than an incidental fallthrough of an if-check

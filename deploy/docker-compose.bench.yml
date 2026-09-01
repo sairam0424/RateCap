@@ -7,3 +7,10 @@ services:
   sidecar:
     environment:
       RATECAP_MAX_INFLIGHT_REQUESTS: "1000"
+      # Sidecar-wide defensive HTTP rate limiter (services/sidecar/ratelimit)
+      # defaults to 1000 req/s and sits outside the 4 documented tiers this
+      # overlay otherwise loosens — left at its default, its own burst
+      # jitter silently rejects requests during benchmark runs well under
+      # its nominal cap, which the "almost nothing is ever rejected"
+      # methodology this overlay exists for depends on not happening.
+      RATECAP_SIDECAR_MAX_RPS: "50000"
