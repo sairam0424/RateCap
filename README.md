@@ -20,6 +20,7 @@ App -> SDK -> sidecar (local) -> core (gRPC) -> Redis (tiers 1-3)
 
 ```bash
 cd deploy
+bash generate-demo-certs.sh
 docker compose up --build
 curl http://localhost:3000/checkout             # repeat 6+ times to see a 429  (tier 1)
 curl http://localhost:3000/slow-report           # repeat concurrently to see a 429 (tier 2)
