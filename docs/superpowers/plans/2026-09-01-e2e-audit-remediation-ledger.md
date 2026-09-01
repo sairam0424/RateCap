@@ -8,3 +8,4 @@ Task 5: APPROVED — Fix deploy/sampleapp/main.go's /fleet-demo release wire for
 Task 6: APPROVED — Fix deploy/sampleapp/main.go's dropped response headers on relay — commit b0573a6
 Task 7: APPROVED — Fix Go SDK's dropped RateLimit-Reset — commit 0c79271
 Task 8: APPROVED — Add missing dependabot.yml entry — commit d9a6c0c
+Task 9: APPROVED — Add resource requests/limits to the Helm chart — commit 39b817d
