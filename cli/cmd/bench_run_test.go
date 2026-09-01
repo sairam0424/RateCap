@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -120,6 +121,44 @@ func TestBenchRun_KeyPrefixIsUsedInGeneratedKeys(t *testing.T) {
 		if len(k) < len("mytest") || k[:len("mytest")] != "mytest" {
 			t.Errorf("expected key %q to start with prefix %q", k, "mytest")
 		}
+	}
+}
+
+func TestBenchRun_SharedKeyFlagUsesSingleKeyForAllRequests(t *testing.T) {
+	var mu sync.Mutex
+	var capturedKeys []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		capturedKeys = append(capturedKeys, r.URL.Query().Get("key"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	root := cmd.NewRootCmd()
+	root.SetOut(&out)
+	root.SetArgs([]string{"bench", "run", "--sidecar-addr", server.URL, "--requests", "8", "--concurrency", "4", "--key-prefix", "sharedtest", "--shared-key", "--json"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(capturedKeys) != 8 {
+		t.Fatalf("expected 8 requests, got %d", len(capturedKeys))
+	}
+	for _, k := range capturedKeys {
+		if k != "sharedtest" {
+			t.Errorf("expected every request to use the literal key %q, got %q", "sharedtest", k)
+		}
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error %v for output %q", err, out.String())
+	}
+	if v, ok := result["shared_key"]; !ok || v != true {
+		t.Errorf("expected shared_key=true in JSON output, got %v", result["shared_key"])
 	}
 }
 

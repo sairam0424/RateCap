@@ -17,15 +17,23 @@ import (
 )
 
 type benchResult struct {
-	TotalRequests  int               `json:"total_requests"`
-	Accepted       int               `json:"accepted"`
-	Rejected       int               `json:"rejected"`
-	Errored        int               `json:"errored"`
-	ElapsedMs      int64             `json:"elapsed_ms"`
-	ThroughputRPS  float64           `json:"throughput_rps"`
-	P50Ms          float64           `json:"p50_ms"`
-	P99Ms          float64           `json:"p99_ms"`
-	P999Ms         float64           `json:"p999_ms"`
+	TotalRequests int     `json:"total_requests"`
+	Accepted      int     `json:"accepted"`
+	Rejected      int     `json:"rejected"`
+	Errored       int     `json:"errored"`
+	ElapsedMs     int64   `json:"elapsed_ms"`
+	ThroughputRPS float64 `json:"throughput_rps"`
+	P50Ms         float64 `json:"p50_ms"`
+	P99Ms         float64 `json:"p99_ms"`
+	P999Ms        float64 `json:"p999_ms"`
+	// SharedKey records whether this run used --shared-key (omitted when
+	// false, so existing JSON consumers of the default per-request-key mode
+	// see no new field). It documents which mode produced the accompanying
+	// percentiles: with queueing enabled and --concurrency above the
+	// target's default_max_concurrent, a shared key forces genuine tier-2
+	// contention, so P50/P99/P999 above reflect queued-wait latency, not the
+	// unqueued fast path per-request unique keys always measure.
+	SharedKey      bool              `json:"shared_key,omitempty"`
 	ResourceBefore *ResourceSnapshot `json:"resource_before,omitempty"`
 	ResourceAfter  *ResourceSnapshot `json:"resource_after,omitempty"`
 }
@@ -90,6 +98,7 @@ func newBenchRunCmd() *cobra.Command {
 	var dockerContainers string
 	var redisAddr string
 	var qps float64
+	var sharedKey bool
 
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -121,7 +130,7 @@ func newBenchRunCmd() *cobra.Command {
 				resourceBefore = &snap
 			}
 
-			result := runBench(cmd.Context(), progress, sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval, qps)
+			result := runBench(cmd.Context(), progress, sidecarAddr, concurrency, requests, keyPrefix, useAcquire, duration, reportInterval, qps, sharedKey)
 
 			if captureResourcesFlag {
 				snap := captureResources(cmd.Context(), defaultRunner, containers, redisAddr)
@@ -141,6 +150,9 @@ func newBenchRunCmd() *cobra.Command {
 				fmt.Sprintf("Elapsed: %dms\n", result.ElapsedMs),
 				fmt.Sprintf("Throughput: %.1f req/s\n", result.ThroughputRPS),
 				fmt.Sprintf("P50: %.2fms  P99: %.2fms  P99.9: %.2fms (accepted requests only)\n", result.P50Ms, result.P99Ms, result.P999Ms),
+			}
+			if result.SharedKey {
+				summaryLines = append(summaryLines, "Shared key: every request contended for the same key — percentiles above include any tier-2 queueing wait, not just unqueued per-request overhead\n")
 			}
 			for _, line := range summaryLines {
 				if _, err := io.WriteString(out, line); err != nil {
@@ -169,6 +181,7 @@ func newBenchRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&dockerContainers, "docker-containers", "", "comma-separated container names/IDs to snapshot with `docker stats` (only used with --capture-resources)")
 	cmd.Flags().StringVar(&redisAddr, "redis-addr", "", "redis connection URI (e.g. redis://localhost:6379) to snapshot with `redis-cli INFO` (only used with --capture-resources)")
 	cmd.Flags().Float64Var(&qps, "qps", 0, "cap the aggregate request rate across all workers to this many requests/sec (0 = unlimited, unchanged behavior)")
+	cmd.Flags().BoolVar(&sharedKey, "shared-key", false, "use --key-prefix as a single literal key for every request instead of a unique key per request, forcing real tier-2 concurrency contention — pair with --acquire and --concurrency above the target's default_max_concurrent to measure queued-load latency")
 
 	return cmd
 }
@@ -201,7 +214,7 @@ func printResourceSection(w io.Writer, label string, snap *ResourceSnapshot) err
 // result. Latency is tracked via a bounded streaming histogram rather than
 // an unbounded slice of raw samples, so memory usage is constant whether
 // the run issues a thousand requests or runs for hours under --duration.
-func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concurrency, requests int, keyPrefix string, useAcquire bool, duration, reportInterval time.Duration, qps float64) benchResult {
+func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concurrency, requests int, keyPrefix string, useAcquire bool, duration, reportInterval time.Duration, qps float64, sharedKey bool) benchResult {
 	client := ratecap.NewClient(sidecarAddr)
 	cumulative := newBenchCounters()
 
@@ -229,7 +242,17 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 				return
 			}
 		}
+		// sharedKey deliberately collapses every request onto one literal
+		// key instead of the default unique-per-request key: the
+		// concurrency-limiter's cap (and its queueing backlog) is keyed
+		// per-request-key, so a unique key per request — the default,
+		// matching the v2 Phase 4b benchmark's own "never legitimately
+		// reject" design goal — never contends the cap at all, regardless
+		// of --concurrency.
 		key := fmt.Sprintf("%s-%d-%d", keyPrefix, workerID, seq)
+		if sharedKey {
+			key = keyPrefix
+		}
 		reqStart := time.Now()
 		kind := "accepted"
 		if useAcquire {
@@ -286,6 +309,7 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 		P50Ms:         cumulative.hist.Percentile(0.50),
 		P99Ms:         cumulative.hist.Percentile(0.99),
 		P999Ms:        cumulative.hist.Percentile(0.999),
+		SharedKey:     sharedKey,
 	}
 }
 

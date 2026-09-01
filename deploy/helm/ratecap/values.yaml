@@ -92,7 +92,6 @@ sampleapp:
 # BEGIN GENERATED CONFIG (see generate-config.sh) — do not hand-edit between these markers
 config:
   yaml: |
-    sync_rate: 5
     tiers:
       rate_limiter:
         default_rate: 2
@@ -102,11 +101,12 @@ config:
         default_max_concurrent: 3
         max_request_duration_ms: 30000
         shadow_mode: false
-        # Bounded queueing (v2 Phase 3) — off by default, uncomment to enable:
-        # queueing_enabled: true
-        # max_backlog: 20
-        # max_queue_wait_ms: 2000
-        # poll_interval_ms: 25
+        # Bounded queueing (v2 Phase 3) — enabled here so the demo/CI/benchmark
+        # stack actually exercises it (see docs/superpowers/specs/2026-07-17-v2-phase-3-queueing-design.md).
+        queueing_enabled: true
+        max_backlog: 20
+        max_queue_wait_ms: 2000
+        poll_interval_ms: 25
       fleet_shedder:
         default_max_concurrent: 5
         reserved_critical_pct: 40

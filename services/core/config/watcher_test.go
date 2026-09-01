@@ -10,7 +10,6 @@ import (
 
 func TestWatch_TriggersOnChangeOnFileWrite(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -30,7 +29,6 @@ tiers:
 	time.Sleep(100 * time.Millisecond)
 
 	newContents := `
-sync_rate: 10
 tiers:
   rate_limiter:
     default_rate: 200
@@ -53,7 +51,6 @@ tiers:
 
 func TestWatch_DebouncesRapidFireEvents(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -73,7 +70,6 @@ tiers:
 	time.Sleep(100 * time.Millisecond)
 
 	firstContents := `
-sync_rate: 10
 tiers:
   rate_limiter:
     default_rate: 200
@@ -81,7 +77,6 @@ tiers:
     shadow_mode: true
 `
 	secondContents := `
-sync_rate: 20
 tiers:
   rate_limiter:
     default_rate: 300
@@ -105,13 +100,10 @@ tiers:
 
 	select {
 	case extra := <-changes:
-		t.Fatalf("expected exactly one onChange call for two rapid-fire writes, got a second callback with SyncRate=%d", extra.SyncRate)
+		t.Fatalf("expected exactly one onChange call for two rapid-fire writes, got a second callback with DefaultRate=%d", extra.Tiers.RateLimiter.DefaultRate)
 	case <-time.After(300 * time.Millisecond):
 	}
 
-	if cfg.SyncRate != 20 {
-		t.Errorf("expected debounced reload to reflect the LAST write (SyncRate=20), got %d", cfg.SyncRate)
-	}
 	if cfg.Tiers.RateLimiter.DefaultRate != 300 {
 		t.Errorf("expected debounced reload to reflect the LAST write (DefaultRate=300), got %d", cfg.Tiers.RateLimiter.DefaultRate)
 	}
@@ -119,7 +111,6 @@ tiers:
 
 func TestWatch_SkipsInvalidConfigWithoutCrashing(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -139,7 +130,6 @@ tiers:
 	time.Sleep(100 * time.Millisecond)
 
 	invalidContents := `
-sync_rate: "not a number"
 tiers:
   rate_limiter:
     default_rate: invalid
@@ -163,7 +153,6 @@ tiers:
 	}
 
 	validContents := `
-sync_rate: 15
 tiers:
   rate_limiter:
     default_rate: 300
@@ -176,8 +165,8 @@ tiers:
 
 	select {
 	case cfg := <-changes:
-		if cfg.SyncRate != 15 {
-			t.Errorf("expected recovery to valid config with SyncRate=15, got %d", cfg.SyncRate)
+		if cfg.Tiers.RateLimiter.DefaultRate != 300 {
+			t.Errorf("expected recovery to valid config with DefaultRate=300, got %d", cfg.Tiers.RateLimiter.DefaultRate)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for recovery after invalid config")
@@ -186,7 +175,6 @@ tiers:
 
 func TestWatch_CallsOnChangeWithErrorWhenLoadFails(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -229,7 +217,6 @@ tiers:
 
 func TestWatch_SurvivesPartialWrite(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -257,7 +244,7 @@ tiers:
 	if err != nil {
 		t.Fatalf("failed to open for partial write: %v", err)
 	}
-	if _, err := f.WriteString("sync_rate: 10\ntiers:\n  rate_lim"); err != nil {
+	if _, err := f.WriteString("tiers:\n  rate_lim"); err != nil {
 		t.Fatalf("failed to write partial content: %v", err)
 	}
 	if err := f.Close(); err != nil {
@@ -267,12 +254,11 @@ tiers:
 	time.Sleep(150 * time.Millisecond)
 	select {
 	case cfg := <-changes:
-		t.Errorf("expected no onChange for a partial/truncated write, got a config with SyncRate=%d", cfg.SyncRate)
+		t.Errorf("expected no onChange for a partial/truncated write, got a config with DefaultRate=%d", cfg.Tiers.RateLimiter.DefaultRate)
 	default:
 	}
 
 	validContents := `
-sync_rate: 20
 tiers:
   rate_limiter:
     default_rate: 300
@@ -285,8 +271,8 @@ tiers:
 
 	select {
 	case cfg := <-changes:
-		if cfg.SyncRate != 20 {
-			t.Errorf("expected recovery reload with SyncRate=20, got %d", cfg.SyncRate)
+		if cfg.Tiers.RateLimiter.DefaultRate != 300 {
+			t.Errorf("expected recovery reload with DefaultRate=300, got %d", cfg.Tiers.RateLimiter.DefaultRate)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for recovery reload after a partial write")
@@ -297,7 +283,6 @@ func TestWatch_SurvivesAtomicRenameSwap(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/ratecap.yaml"
 	if err := os.WriteFile(path, []byte(`
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -324,7 +309,6 @@ tiers:
 	// ConfigMap volume mounts and `mv` use, distinct from an in-place write.
 	tmpPath := dir + "/ratecap.yaml.tmp"
 	if err := os.WriteFile(tmpPath, []byte(`
-sync_rate: 30
 tiers:
   rate_limiter:
     default_rate: 400
@@ -339,8 +323,8 @@ tiers:
 
 	select {
 	case cfg := <-changes:
-		if cfg.SyncRate != 30 {
-			t.Errorf("expected reload via rename-swap with SyncRate=30, got %d", cfg.SyncRate)
+		if cfg.Tiers.RateLimiter.DefaultRate != 400 {
+			t.Errorf("expected reload via rename-swap with DefaultRate=400, got %d", cfg.Tiers.RateLimiter.DefaultRate)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for reload after an atomic rename-swap")
@@ -351,7 +335,6 @@ func TestWatch_SurvivesDeleteAndRecreate(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/ratecap.yaml"
 	if err := os.WriteFile(path, []byte(`
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -379,7 +362,6 @@ tiers:
 	time.Sleep(100 * time.Millisecond)
 
 	if err := os.WriteFile(path, []byte(`
-sync_rate: 40
 tiers:
   rate_limiter:
     default_rate: 500
@@ -391,8 +373,8 @@ tiers:
 
 	select {
 	case cfg := <-changes:
-		if cfg.SyncRate != 40 {
-			t.Errorf("expected reload after delete+recreate with SyncRate=40, got %d", cfg.SyncRate)
+		if cfg.Tiers.RateLimiter.DefaultRate != 500 {
+			t.Errorf("expected reload after delete+recreate with DefaultRate=500, got %d", cfg.Tiers.RateLimiter.DefaultRate)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for reload after delete+recreate — fsnotify.Add watches a directory here, so a recreated file under the same dir should still be seen")

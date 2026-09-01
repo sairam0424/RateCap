@@ -19,7 +19,6 @@ func writeTempConfig(t *testing.T, contents string) string {
 
 func TestLoad_ParsesRateLimiterTier(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -32,9 +31,6 @@ tiers:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.SyncRate != 5 {
-		t.Errorf("expected SyncRate=5, got %d", cfg.SyncRate)
-	}
 	if cfg.Tiers.RateLimiter.DefaultRate != 100 {
 		t.Errorf("expected DefaultRate=100, got %d", cfg.Tiers.RateLimiter.DefaultRate)
 	}
@@ -55,7 +51,6 @@ func TestLoad_MissingFileReturnsError(t *testing.T) {
 
 func TestLoad_ParsesConcurrencyLimiterTier(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -85,7 +80,6 @@ tiers:
 
 func TestLoad_ParsesConcurrencyLimiterQueueingFields(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -122,7 +116,6 @@ tiers:
 
 func TestLoad_QueueingFieldsDefaultToZeroValuesWhenOmitted(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -146,7 +139,6 @@ tiers:
 
 func TestLoad_ParsesFleetShedderTier(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -246,7 +238,6 @@ func TestValidate_AcceptsReservedCriticalPctBoundaries(t *testing.T) {
 
 func TestValidate_ErrorMentionsFleetShedderOnMissingBlock(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -300,7 +291,6 @@ func TestValidate_RejectsNegativeConcurrencyLimiterDefaultMaxConcurrent(t *testi
 
 func TestValidate_ErrorMentionsConcurrencyLimiterOnMissingBlock(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -460,7 +450,6 @@ func TestValidate_AcceptsZeroDefaultBurst(t *testing.T) {
 
 func TestConfig_Hash_IsStableForIdenticalContent(t *testing.T) {
 	yaml := `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -483,7 +472,6 @@ tiers:
 
 func TestConfig_Hash_DiffersForDifferentContent(t *testing.T) {
 	cfg1, err := config.Load(writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -494,10 +482,9 @@ tiers:
 		t.Fatalf("unexpected error: %v", err)
 	}
 	cfg2, err := config.Load(writeTempConfig(t, `
-sync_rate: 10
 tiers:
   rate_limiter:
-    default_rate: 100
+    default_rate: 200
     default_burst: 500
     shadow_mode: false
 `))

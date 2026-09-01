@@ -17,8 +17,7 @@ import (
 func TestMain_HealthServerRespondsServingRegardlessOfRedisReachability(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "ratecap.yaml")
-	validConfig := `sync_rate: 5
-tiers:
+	validConfig := `tiers:
   rate_limiter:
     default_rate: 100
     default_burst: 500
