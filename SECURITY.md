@@ -22,7 +22,7 @@ When reporting, please include:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce (a minimal repro is ideal)
-- The affected component (`services/core`, `services/sidecar`, `packages/sdks/go`, or `proto`)
+- The affected component (`services/core`, `services/sidecar`, `packages/sdks/go`, `packages/sdks/python`, `cli`, or `proto`)
 - Any suggested remediation, if you have one
 
 ## What to Expect
@@ -86,6 +86,6 @@ If your deployment cannot guarantee that only trusted callers can reach `ratecap
 
 ## Scope
 
-In scope: the core gRPC engine (`services/core`), the sidecar (`services/sidecar`), the Go SDK (`packages/sdks/go`), and the gRPC contract (`proto/`).
+In scope: the core gRPC engine (`services/core`), the sidecar (`services/sidecar`), the Go SDK (`packages/sdks/go`), the Python SDK (`packages/sdks/python`), the operator CLI (`cli`), and the gRPC contract (`proto/`).
 
 Out of scope: the `deploy/sampleapp` demo application (a minimal example, not intended for production use) and third-party dependencies (report those upstream, though we appreciate a heads-up so we can track and update).
