@@ -10,3 +10,4 @@ Task 7: APPROVED — Fix Go SDK's dropped RateLimit-Reset — commit 0c79271
 Task 8: APPROVED — Add missing dependabot.yml entry — commit d9a6c0c
 Task 9: APPROVED — Add resource requests/limits to the Helm chart — commit 39b817d
 Task 10: APPROVED — Fix the benchmark overlay's hidden RPS ceiling — commit 1bfc43c
+Task 11: APPROVED — Documentation fixes: CONTRIBUTING.md, ARCHITECTURE.md, README.md, SECURITY.md — commit f56312c
