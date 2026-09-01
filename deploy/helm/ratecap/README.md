@@ -4,13 +4,15 @@ Deploys `redis`, `ratecap-core`, `ratecap-sidecar`, and (optionally) `deploy/sam
 
 ## Images
 
-This chart is registry-agnostic — it does not build images. Point `<component>.image.repository`/`tag` in `values.yaml` at wherever your images live. For local development with `kind`:
+`values.yaml`'s defaults point at the real images `publish-release.yml` publishes on every tag (`ghcr.io/sairam0424/ratecap-{core,sidecar,sampleapp}:latest`), so `helm install ratecap oci://ghcr.io/sairam0424/charts/ratecap` works with zero overrides. This chart doesn't build images itself, though — override `<component>.image.repository`/`tag` in `values.yaml` (or via `--set`) to point at wherever your images live instead.
+
+To test an unreleased local change against a `kind` cluster before it's pushed to GHCR, build and tag locally under those exact same fully-qualified names so no override is needed — `kind load docker-image` only needs the local tag to match what the pod spec requests, it never tries to reach the real registry:
 
 ```bash
-docker build -f services/core/Dockerfile -t ratecap-core:latest .
-docker build -f services/sidecar/Dockerfile -t ratecap-sidecar:latest .
-docker build -f deploy/sampleapp/Dockerfile -t ratecap-sampleapp:latest .
-kind load docker-image ratecap-core:latest ratecap-sidecar:latest ratecap-sampleapp:latest --name <your-cluster-name>
+docker build -f services/core/Dockerfile -t ghcr.io/sairam0424/ratecap-core:latest .
+docker build -f services/sidecar/Dockerfile -t ghcr.io/sairam0424/ratecap-sidecar:latest .
+docker build -f deploy/sampleapp/Dockerfile -t ghcr.io/sairam0424/ratecap-sampleapp:latest .
+kind load docker-image ghcr.io/sairam0424/ratecap-core:latest ghcr.io/sairam0424/ratecap-sidecar:latest ghcr.io/sairam0424/ratecap-sampleapp:latest --name <your-cluster-name>
 ```
 
 (all 3 `docker build` commands run from the repo root, matching `deploy/docker-compose.yml`'s existing `build: context: ..` convention)
