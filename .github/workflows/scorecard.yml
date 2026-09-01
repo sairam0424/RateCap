@@ -7,6 +7,10 @@ on:
     # Weekly on Sundays.
     - cron: "0 2 * * 0"
   branch_protection_rule:
+  workflow_dispatch: # lets a maintainer force a fresh score on demand,
+    # instead of waiting for the next push/cron — Scorecard scores can go
+    # stale for days after a real fix (e.g. a signed release) if nothing
+    # else touches main in between.
 
 permissions:
   contents: read
