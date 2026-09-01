@@ -20,6 +20,24 @@ type releaseKey struct {
 	tok string
 }
 
+// relayedCheckHeaders lists the /check response headers a caller-facing demo
+// endpoint must forward — the sidecar's own proxy.go (X-RateCap-Shed-Tier,
+// Retry-After-Ms, RateLimit-Reset) sets these on a decision-by-decision basis,
+// so any given response may carry zero, one, or several of them.
+var relayedCheckHeaders = []string{"X-RateCap-Shed-Tier", "Retry-After-Ms", "RateLimit-Reset"}
+
+// relayCheckHeaders copies whichever of relayedCheckHeaders are present on the
+// sidecar's /check response onto the outgoing response, for every status code
+// — must be called before the first WriteHeader/Write on w, since headers set
+// afterward are silently dropped by net/http.
+func relayCheckHeaders(w http.ResponseWriter, checkResp http.Header) {
+	for _, h := range relayedCheckHeaders {
+		if v := checkResp.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+}
+
 // releaseAll sends one /release call per reservation, using the headers
 // services/sidecar/proxy/proxy.go's ReleaseHandler actually reads
 // (X-RateCap-Concurrency-Key/-Token) — a query-param release is silently a
@@ -133,6 +151,8 @@ func main() {
 			releaseKeys = append(releaseKeys, releaseKey{key: resKey, tok: tok})
 		}
 
+		relayCheckHeaders(w, resp.Header)
+
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
 			w.WriteHeader(resp.StatusCode)
@@ -167,6 +187,8 @@ func main() {
 			return
 		}
 		defer resp.Body.Close() //nolint:errcheck // status code already read; Close error carries no new information
+
+		relayCheckHeaders(w, resp.Header)
 
 		if resp.StatusCode != http.StatusOK {
 			w.WriteHeader(resp.StatusCode)
