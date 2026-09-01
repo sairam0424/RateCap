@@ -6,9 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Pending (requires action outside this repo)
+## [python-sdk-v0.1.0] — 2026-09-01 — Python SDK: First PyPI Release
 
-- Publishing `packages/sdks/python` to PyPI: `.github/workflows/publish-python-sdk.yml` and its PyPI Trusted Publisher (OIDC) setup are ready, but no `python-sdk-v*` tag has been pushed yet. Before the first one is, a repo admin must complete the one-time PyPI pending-publisher registration documented in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) — the first tag push otherwise fails with an OIDC authentication error, not a build error.
+`packages/sdks/python` published to PyPI for the first time (`pip install ratecap`), via `.github/workflows/publish-python-sdk.yml`'s PyPI Trusted Publisher (OIDC) flow — no `PYPI_API_TOKEN` secret involved. This SDK is versioned independently of the main `vX.Y.Z` releases (its own `python-sdk-vX.Y.Z` tag series, tracking `packages/sdks/python/pyproject.toml`'s own version), since it ships on its own cadence rather than RateCap's server/CLI release cycle. Verified end-to-end: real release files on PyPI, `pip install ratecap` in a fresh virtualenv, `Client`/`Ticket`/`AllowResult`/`estimate_llm_cost` all importable.
 
 ## [2.11.0] — 2026-09-01 — Discoverability & CI/CD Modernization
 
