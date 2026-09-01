@@ -7,3 +7,4 @@ Task 4: APPROVED — Add CodeQL for Go — commit 3c78bc6
 Task 5: APPROVED — SBOM + build provenance on release artifacts — commit 86f919d
 Task 6: APPROVED — Add gosec to .golangci.yml, fix real findings before enabling — commit 3cccc33
 Task 7: APPROVED — Community-health files (issue templates, PR template, CODEOWNERS, release.yml) — commit 3b1a49d
+Task 8: APPROVED — README updates (badges, ToC, docker pull, helm install mention) — commit c90bdc1
