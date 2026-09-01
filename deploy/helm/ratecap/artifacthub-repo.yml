@@ -2,10 +2,11 @@
 # sibling ":artifacthub.io"-tagged artifact by publish-release.yml, per
 # https://github.com/artifacthub/hub/blob/master/docs/helm_charts_repositories.md#oci-support
 #
-# repositoryID is intentionally omitted: it's only assigned after this
-# repository is registered in the Artifact Hub UI (a one-time manual step
-# outside this repo), and fabricating one would falsely claim an ID that
-# isn't ours.
+# repositoryID is the real ID Artifact Hub assigned when the repository
+# was registered via its UI (Control Panel -> Repositories -> Add,
+# oci://ghcr.io/sairam0424/charts/ratecap) — required for the "Verified
+# Publisher" badge, per https://artifacthub.io/docs/topics/repositories/#ownership-claim.
+repositoryID: 5f787b69-4801-4e9a-b6fa-a87250b5f385
 owners:
   - name: sairam0424
     email: uggesairam0000@gmail.com
