@@ -196,10 +196,11 @@ func main() {
 	}
 
 	// RATECAP_ADMIN_SECRET is genuinely optional (see helm chart README's
-	// adminSecret section): an empty secret makes admin.Handler reject every
-	// request (ServeHTTP's provided == "" / length-mismatch check never
-	// matches an empty h.secret), which safely disables /admin/set-limit
-	// rather than blocking sidecar startup entirely.
+	// adminSecret section): an empty secret makes admin.Handler explicitly
+	// reject every request with 503 (a dedicated h.secret == "" guard, not
+	// an incidental effect of the constant-time comparison), which safely
+	// disables /admin/set-limit rather than blocking sidecar startup
+	// entirely.
 	adminSecret := os.Getenv("RATECAP_ADMIN_SECRET")
 	if adminSecret == "" {
 		log.Printf("RATECAP_ADMIN_SECRET not set — /admin/set-limit is disabled")
