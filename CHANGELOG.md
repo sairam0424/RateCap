@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.12.1] — 2026-09-01 — Fix Signed-Releases Detection
+
+Patch: the live Scorecard re-check for v2.12.0 came back with **Signed-Releases still 0/10**. Root cause, confirmed directly against `ossf/scorecard`'s own source (`probes/releasesAreSigned`, `probes/releasesHaveProvenance`): the check is a plain filename-suffix probe over GitHub Release assets — it only recognizes `.asc`/`.minisig`/`.sig`/`.sign`/`.sigstore`/`.sigstore.json` as signatures and `.intoto.jsonl` as provenance. v2.12.0's `checksums.txt.bundle` (cosign's modern bundle format) and the GitHub Attestations API (not a release asset at all) are both genuinely valid signing/provenance mechanisms, but neither matches a suffix the probe checks for, so the score didn't move despite the artifacts being real and verifiable.
+
+### Fixed
+
+- `.github/workflows/publish-release.yml`: `publish-cli-binaries` now also runs a second, independent `cosign sign-blob --yes checksums.txt` (no `--bundle`) and uploads its plain base64 signature as `checksums.txt.sig` — a real, separately-verifiable keyless signature under a suffix the probe recognizes. The existing `checksums.txt.bundle` step and `README.md`'s documented `--bundle` verification path are unchanged and remain the recommended way to verify a download.
+
+### Note
+
+Scorecard's `Signed-Releases` score is a rolling average over the last 5 releases (`checks/evaluation/signed_releases.go`), including v2.11.0 and earlier, which shipped before any signing existed — so this won't jump straight to 8-10; it climbs as older, unsigned releases age out of that 5-release window. Provenance (the `.intoto.jsonl` half of the check) is intentionally left unfixed here: doing so would mean relabeling `actions/attest-build-provenance`'s Sigstore-bundle output with a `.intoto.jsonl` extension it doesn't actually match the format of, which is a real fix for the *score* but not an honest one for the *artifact* — flagged as a genuine gap in Scorecard's own tooling (it hasn't caught up to GitHub's native attestations API yet), not something to work around by mislabeling a file.
+
 ## [2.12.0] — 2026-09-01 — Signed, Multi-Platform CLI Release Binaries
 
 Minor release: closes two gaps found while investigating OpenSSF Scorecard's live **Signed-Releases: 0/10** score (`docs/superpowers/plans/2026-09-01-signed-cli-release-binaries.md`) — SBOMs and provenance were already attached to/attesting the container images and Helm chart, but nothing downloadable was ever attached to a GitHub Release itself, which is specifically what that check looks for; separately, `ratecapctl` had no downloadable binary at all (`go install`/build-from-source only), a real discoverability gap independent of Scorecard. Both are fixed by the same feature: cross-platform, signed `ratecapctl` release binaries.
