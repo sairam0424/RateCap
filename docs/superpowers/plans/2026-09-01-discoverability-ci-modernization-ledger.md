@@ -6,3 +6,4 @@ Task 3: APPROVED — Add OpenSSF Scorecard — commit 18c7564
 Task 4: APPROVED — Add CodeQL for Go — commit 3c78bc6
 Task 5: APPROVED — SBOM + build provenance on release artifacts — commit 86f919d
 Task 6: APPROVED — Add gosec to .golangci.yml, fix real findings before enabling — commit 3cccc33
+Task 7: APPROVED — Community-health files (issue templates, PR template, CODEOWNERS, release.yml) — commit 3b1a49d
