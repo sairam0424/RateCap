@@ -1,6 +1,7 @@
 # RateCap
 
 [![CI](https://github.com/sairam0424/RateCap/actions/workflows/ci.yml/badge.svg)](https://github.com/sairam0424/RateCap/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sairam0424/RateCap/badge)](https://scorecard.dev/viewer/?uri=github.com/sairam0424/RateCap)
 
 A faithful, open-source recreation of [Stripe's four-tier rate-limiter and load-shedder architecture](https://stripe.com/blog/rate-limiters), built as a hybrid core-engine + sidecar system.
 
