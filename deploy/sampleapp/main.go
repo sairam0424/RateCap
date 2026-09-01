@@ -69,7 +69,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		allowed, retryAfterMs, err := client.Allow(ctx, "demo-user")
+		allowed, retryAfterMs, _, err := client.Allow(ctx, "demo-user")
 		if err != nil {
 			http.Error(w, "rate limit check failed", http.StatusInternalServerError)
 			return
