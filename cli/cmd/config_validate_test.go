@@ -21,7 +21,6 @@ func writeTempConfig(t *testing.T, contents string) string {
 
 func TestConfigValidate_ExitsZeroOnValidConfig(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100
@@ -53,7 +52,6 @@ tiers:
 
 func TestConfigValidate_ReturnsErrorOnInvalidConfig(t *testing.T) {
 	path := writeTempConfig(t, `
-sync_rate: 5
 tiers:
   rate_limiter:
     default_rate: 100

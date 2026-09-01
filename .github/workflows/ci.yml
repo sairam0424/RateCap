@@ -283,6 +283,100 @@ jobs:
           check /fleet-demo 200 503
           check /worker-demo 200 503
 
+      - name: Exercise Tier 2 bounded queueing (issue #48 prerequisite signal)
+        # deploy/ratecap.yaml now ships queueing_enabled: true for
+        # concurrency_limiter (default_max_concurrent: 3). This drives real
+        # load past that cap on a shared key via the sidecar's own
+        # /check+/release wire format (not the sample app, whose fixed
+        # 2s /slow-report sleep would race unpredictably close to
+        # max_queue_wait_ms's 2000ms deadline) and fails the job outright if
+        # a genuine QUEUE decision is never observed — the exact prerequisite
+        # signal issue #48 says must exist before Tier 3 queueing can even be
+        # designed.
+        run: |
+          base=http://localhost:8080
+          key=ci-queue-test
+
+          # release_all releases every reservation a /check response header
+          # block carries (Concurrency-Key-N/Token-N, N=0,1,2… — a single
+          # /check can carry more than one, e.g. this key's own tier-2 slot
+          # plus tier-3's shared "fleet" slot, per CLAUDE.md's own gotcha
+          # note), so this test never leaks a reservation into later steps.
+          release_all() {
+            local hdrfile="$1"
+            local i=0
+            local tok key
+            while true; do
+              tok=$(grep -i "^Concurrency-Token-$i:" "$hdrfile" | awk '{print $2}' | tr -d '\r' || true)
+              [ -z "$tok" ] && break
+              key=$(grep -i "^Concurrency-Key-$i:" "$hdrfile" | awk '{print $2}' | tr -d '\r' || true)
+              curl -s -o /dev/null -X POST "${base}/release" -H "X-RateCap-Concurrency-Key: ${key}" -H "X-RateCap-Concurrency-Token: ${tok}"
+              i=$((i + 1))
+            done
+          }
+
+          # x-ratecap-priority: critical on every call below is deliberate,
+          # not incidental: fleet_shedder (tier 3, unconditionally next in
+          # the pipeline after concurrency_limiter) halves sheddable's
+          # effective cap via reserved_critical_pct (5 * (100-40)/100 == 3),
+          # which 3 held sheddable reservations alone already saturate —
+          # verified live, this shreds a 4th sheddable request at tier 3
+          # regardless of what tier 2 does with it. critical uses fleet's
+          # full cap (5) and also skips the sidecar-local tier 4 worker
+          # shedder (RATECAP_MAX_INFLIGHT_REQUESTS: "3") entirely, isolating
+          # tier 2's queueing from both unrelated caps.
+
+          # Fill the demo cap (default_max_concurrent: 3) with 3 held
+          # reservations on one shared key — sequential, not concurrent: the
+          # hold only needs to exist before the 4th request below, not be
+          # acquired simultaneously.
+          for i in 1 2 3; do
+            code=$(curl -s -D "/tmp/hdr_hold_${i}.txt" -o /dev/null -w '%{http_code}' -H "x-ratecap-priority: critical" "${base}/check?key=${key}")
+            echo "hold ${i}: ${code}"
+          done
+
+          # A 4th request on the same key now finds the cap full. With
+          # queueing_enabled, core's ConcurrencyLimiter.Check blocks inside
+          # the gRPC call, polling every poll_interval_ms until a slot frees
+          # or max_queue_wait_ms elapses — this is the QUEUE action under
+          # test, not an instant 429.
+          curl -s -w '%{time_total}' -D /tmp/hdr_queued.txt -o /dev/null -H "x-ratecap-priority: critical" "${base}/check?key=${key}" >/tmp/time_queued.txt &
+          queued_pid=$!
+
+          # Long enough to prove the 4th request is genuinely parked
+          # waiting (not instantly rejected), comfortably short of
+          # max_queue_wait_ms's 2000ms deadline.
+          sleep 0.5
+
+          for i in 1 2 3; do
+            release_all "/tmp/hdr_hold_${i}.txt"
+          done
+
+          wait "${queued_pid}" || true
+          queued_code=$(head -1 /tmp/hdr_queued.txt | awk '{print $2}' | tr -d '\r' || true)
+          queued_time=$(cat /tmp/time_queued.txt 2>/dev/null || true)
+          echo "queued request: HTTP ${queued_code} after ${queued_time}s"
+          release_all /tmp/hdr_queued.txt
+
+          # Pipeline.Check attributes a QUEUE decision's Tier to whichever
+          # tier ran last and returned a non-empty Tier (fleet_shedder, since
+          # it always runs after concurrency_limiter) — see
+          # TestPipeline_QueueFromEarlierTierContinuesToLaterTier in
+          # services/core/limiter/pipeline_test.go — so this matches on the
+          # action label alone, which only ConcurrencyLimiter ever sets to
+          # "queue", rather than assuming a specific tier label. Prometheus
+          # renders labels alphabetically, not in the CounterVec's declared
+          # order, so this greps the whole line rather than a fixed label
+          # position.
+          metrics=$(curl -s "${base}/metrics")
+          echo "$metrics" | grep '^ratecap_decisions_total' || true
+          queue_total=$(echo "$metrics" | awk '/^ratecap_decisions_total\{/ && /action="queue"/ { sum += $NF } END { print sum + 0 }')
+          echo "ratecap_decisions_total{...,action=\"queue\"} = ${queue_total}"
+          if [ "${queue_total}" -lt 1 ]; then
+            echo "FAIL: Tier 2 queueing never produced a QUEUE decision — queueing_enabled may be off or misconfigured" >&2
+            exit 1
+          fi
+
       - name: Tear down stack
         if: always()
         run: |

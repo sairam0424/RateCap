@@ -114,29 +114,6 @@ func TestResolveMaxRPS_NegativeReturnsDefault(t *testing.T) {
 	}
 }
 
-func TestNewTopMux_MetricsNeverThrottled(t *testing.T) {
-	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now) // zero burst: every /check call is throttled
-	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
-	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-
-	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	for i := 0; i < 5; i++ {
-		resp, err := http.Get(server.URL + "/metrics")
-		if err != nil {
-			t.Fatalf("unexpected error calling /metrics: %v", err)
-		}
-		resp.Body.Close() //nolint:gosec,errcheck // status code already read; Close error carries no new information
-		if resp.StatusCode == http.StatusTooManyRequests {
-			t.Fatalf("/metrics was throttled on call %d — it must bypass the request-path rate limiter", i)
-		}
-	}
-}
-
 func TestNewTopMux_CheckIsThrottled(t *testing.T) {
 	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now)
@@ -156,5 +133,116 @@ func TestNewTopMux_CheckIsThrottled(t *testing.T) {
 
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("expected /check to be throttled by a zero-burst limiter, got status %d", resp.StatusCode)
+	}
+}
+
+func TestNewTopMux_MetricsIsThrottled(t *testing.T) {
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now) // zero burst: every call is throttled
+	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("unexpected error calling /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected /metrics to be throttled by a zero-burst limiter, got status %d", resp.StatusCode)
+	}
+}
+
+func TestNewTopMux_HealthzIsThrottled(t *testing.T) {
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now)
+	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("unexpected error calling /healthz: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected /healthz to be throttled by a zero-burst limiter, got status %d", resp.StatusCode)
+	}
+}
+
+func TestNewTopMux_AdminSetLimitIsThrottled(t *testing.T) {
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	tinyLimiter := ratelimit.NewWithClock(0, 0, time.Now)
+	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	mux := newTopMux(protected, tinyLimiter, metricsHandler, healthz, adminHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/admin/set-limit", "application/json", nil)
+	if err != nil {
+		t.Fatalf("unexpected error calling /admin/set-limit: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected /admin/set-limit to be throttled by a zero-burst limiter before reaching its own auth check, got status %d", resp.StatusCode)
+	}
+}
+
+// TestNewTopMux_AllFiveRoutesShareOneTokenBucket proves the limiter passed
+// into newTopMux is the single source of truth for all five routes — not
+// five independent allowances — by exhausting the shared bucket via /check
+// and confirming the other four routes are immediately rejected too.
+func TestNewTopMux_AllFiveRoutesShareOneTokenBucket(t *testing.T) {
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	sharedLimiter := ratelimit.NewWithClock(1, 1, time.Now)
+	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	healthz := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	mux := newTopMux(protected, sharedLimiter, metricsHandler, healthz, adminHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/check")
+	if err != nil {
+		t.Fatalf("unexpected error calling /check: %v", err)
+	}
+	resp.Body.Close() //nolint:gosec,errcheck // status code already read; Close error carries no new information
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected the single available token to be consumed by /check, got %d", resp.StatusCode)
+	}
+
+	for _, path := range []string{"/release", "/metrics", "/healthz"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("unexpected error calling %s: %v", path, err)
+		}
+		resp.Body.Close() //nolint:gosec,errcheck // status code already read; Close error carries no new information
+		if resp.StatusCode != http.StatusTooManyRequests {
+			t.Errorf("expected %s to be rejected because /check already consumed the shared token, got %d", path, resp.StatusCode)
+		}
+	}
+
+	resp, err = http.Post(server.URL+"/admin/set-limit", "application/json", nil)
+	if err != nil {
+		t.Fatalf("unexpected error calling /admin/set-limit: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected /admin/set-limit to be rejected because /check already consumed the shared token, got %d", resp.StatusCode)
 	}
 }

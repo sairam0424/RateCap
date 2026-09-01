@@ -18,7 +18,7 @@ import (
 func TestMain_FailsClosedOnMissingFleetShedderBlock(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "ratecap.yaml")
-	invalidConfig := "sync_rate: 5\ntiers:\n  rate_limiter:\n    default_rate: 100\n    default_burst: 500\n    shadow_mode: false\n"
+	invalidConfig := "tiers:\n  rate_limiter:\n    default_rate: 100\n    default_burst: 500\n    shadow_mode: false\n"
 	if err := os.WriteFile(configPath, []byte(invalidConfig), 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}
@@ -46,8 +46,7 @@ func TestMain_SkipsInvalidConfigReloadWithoutReconfiguring(t *testing.T) {
 
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "ratecap.yaml")
-	validConfig := `sync_rate: 5
-tiers:
+	validConfig := `tiers:
   rate_limiter:
     default_rate: 100
     default_burst: 500
@@ -137,8 +136,7 @@ tiers:
 		t.Fatalf("expected ALLOW with initial valid config, got %v", initialDecision.Action)
 	}
 
-	invalidReload := `sync_rate: 5
-tiers:
+	invalidReload := `tiers:
   rate_limiter:
     default_rate: 100
     default_burst: 500
@@ -167,8 +165,7 @@ tiers:
 		t.Errorf("expected ALLOW after invalid reload (config should be unchanged), got %v", secondDecision.Action)
 	}
 
-	validRecovery := `sync_rate: 5
-tiers:
+	validRecovery := `tiers:
   rate_limiter:
     default_rate: 100
     default_burst: 500
