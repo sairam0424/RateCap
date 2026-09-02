@@ -47,8 +47,10 @@ services:
       RATECAP_TLS_CERT_PATH: /etc/ratecap/certs/sidecar-cert.pem
       RATECAP_TLS_KEY_PATH: /etc/ratecap/certs/sidecar-key.pem
       RATECAP_TLS_CA_PATH: /etc/ratecap/certs/ca.pem
+      RATECAP_CRITICAL_ROUTES_PATH: /etc/ratecap/critical-routes.yaml
     volumes:
       - ./certs:/etc/ratecap/certs:ro
+      - ./critical-routes.yaml:/etc/ratecap/critical-routes.yaml
     depends_on:
       - core
     ports:

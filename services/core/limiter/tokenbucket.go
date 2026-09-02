@@ -8,7 +8,7 @@ import (
 )
 
 type checker interface {
-	CheckAndDecrement(ctx context.Context, key string, rate, burst, cost int) (bool, int64, error)
+	CheckAndDecrement(ctx context.Context, key string, rate, burst, cost int) (bool, int64, int64, error)
 }
 
 type TokenBucketLimiter struct {
@@ -59,7 +59,7 @@ func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, 
 	rate, burst, shadowMode := l.rate, l.burst, l.shadowMode
 	l.mu.RUnlock()
 
-	allowed, retryAfterMs, err := l.store.CheckAndDecrement(ctx, req.Key, rate, burst, req.Cost)
+	allowed, retryAfterMs, remaining, err := l.store.CheckAndDecrement(ctx, req.Key, rate, burst, req.Cost)
 	if err != nil {
 		// Fail OPEN for Tier 1 only, matching Stripe's documented precedent
 		// (fail-open on request-rate, fail-closed on concurrent-requests —
@@ -69,16 +69,16 @@ func (l *TokenBucketLimiter) Check(ctx context.Context, req Request) (Decision, 
 		// resource usage, so letting them fail open would remove the bound
 		// they exist to enforce during exactly the outage when it matters most.
 		coremetrics.RecordFailOpen("rate_limiter", "store_error")
-		return Decision{Action: ALLOW, Tier: "rate_limiter"}, nil
+		return Decision{Action: ALLOW, Tier: "rate_limiter"}, nil // Limit/Remaining left at zero-value: the store call failed, so no real count exists to report
 	}
 
 	if allowed {
-		return Decision{Action: ALLOW, Tier: "rate_limiter"}, nil
+		return Decision{Action: ALLOW, Tier: "rate_limiter", Limit: int64(burst), Remaining: remaining}, nil
 	}
 
 	if shadowMode {
-		return Decision{Action: SHADOW_LOG, RetryAfterMs: retryAfterMs, Tier: "rate_limiter"}, nil
+		return Decision{Action: SHADOW_LOG, RetryAfterMs: retryAfterMs, Tier: "rate_limiter", Limit: int64(burst), Remaining: remaining}, nil
 	}
 
-	return Decision{Action: REJECT_429, RetryAfterMs: retryAfterMs, Tier: "rate_limiter"}, nil
+	return Decision{Action: REJECT_429, RetryAfterMs: retryAfterMs, Tier: "rate_limiter", Limit: int64(burst), Remaining: remaining}, nil
 }
