@@ -44,6 +44,17 @@ services:
       # deliberately separate from RATECAP_SHARED_SECRET, see SECURITY.md.
       RATECAP_ADMIN_SECRET: demo-admin-secret-do-not-use-in-production
       RATECAP_MAX_INFLIGHT_REQUESTS: "3"
+      # Unset, this defaults to 1000 req/s -- high enough that the sidecar's
+      # own defensive self-throttle (issue #56's fix, wraps /check, /release,
+      # /metrics, /healthz, /admin/set-limit) is effectively invisible in
+      # this demo stack; nobody exploring it locally would ever see a 429
+      # from it without generating far more load than a demo normally would.
+      # 20 req/s is well above CI's e2e-smoke request volume (a few requests
+      # per second at most) but low enough that a deliberate quick flood
+      # (e.g. `for i in $(seq 1 30); do curl .../healthz & done`) visibly
+      # demonstrates the mechanism -- confirmed live during the 2026-09-02
+      # production dry run.
+      RATECAP_SIDECAR_MAX_RPS: "20"
       RATECAP_TLS_CERT_PATH: /etc/ratecap/certs/sidecar-cert.pem
       RATECAP_TLS_KEY_PATH: /etc/ratecap/certs/sidecar-key.pem
       RATECAP_TLS_CA_PATH: /etc/ratecap/certs/ca.pem

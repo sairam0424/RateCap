@@ -41,9 +41,12 @@ done
 
 ```bash
 cd deploy
+bash generate-demo-certs.sh
 docker compose up --build
 curl http://localhost:3000/checkout   # repeat 6+ times to see a 429
 ```
+
+The cert-gen step is required: `docker-compose.yml` hardcodes mTLS env vars for both `core` and `sidecar`, so `core`'s TLS-only listener fails to start on a clean checkout without it.
 
 ### Regenerate the gRPC contract
 
@@ -86,11 +89,11 @@ v1 is locked to Stripe's exact four mechanisms. Do not add a fifth limiting mech
 - Target `develop`, never `main` directly.
 - Request review before merging.
 
-## Releasing the Python SDK to PyPI (one-time setup)
+## Releasing the Python SDK to PyPI
 
-`.github/workflows/publish-python-sdk.yml` publishes `packages/sdks/python` to PyPI on every `python-sdk-v*` tag push, using [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) — there is no `PYPI_API_TOKEN` secret to manage. Before the *first* tag push, a repo admin must complete two one-time steps, or the workflow's OIDC exchange fails:
+`.github/workflows/publish-python-sdk.yml` publishes `packages/sdks/python` to PyPI on every `python-sdk-v*` tag push, using [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) — there is no `PYPI_API_TOKEN` secret to manage. `ratecap` has been live on PyPI since `python-sdk-v0.1.0` (2026-09-01); the one-time publisher setup below has already been completed and is kept here as a historical record for anyone reconfiguring Trusted Publishing (e.g. after transferring the project to a new owner/repo) rather than as a pending first-time step.
 
-1. **Register a pending publisher on PyPI.** The `ratecap` project doesn't exist on PyPI yet, so this is configured from your PyPI account (not a project) — log in to [pypi.org](https://pypi.org), go to **Account settings -> Publishing**, and add a pending publisher with:
+1. **Register a pending publisher on PyPI.** Before the *first* tag push, the `ratecap` project didn't yet exist on PyPI, so this was configured from the PyPI account (not a project) — log in to [pypi.org](https://pypi.org), go to **Account settings -> Publishing**, and add a pending publisher with:
    - PyPI project name: `ratecap`
    - Owner: `sairam0424`
    - Repository name: `RateCap`

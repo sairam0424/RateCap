@@ -126,6 +126,22 @@ openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
 # ... sign with your CA, same pattern for sidecar with DNS:my-ratecap-sidecar
 ```
 
+## Optional: `critical_routes` priority resolution
+
+Off by default. When enabled, `criticalRoutes.yaml` is mounted into the sidecar as `critical-routes.yaml` (a second key on the same ConfigMap that already carries `ratecap.yaml`), and `RATECAP_CRITICAL_ROUTES_PATH` is set to point at it — mirroring `deploy/docker-compose.yml`'s `./critical-routes.yaml` wiring for the demo stack:
+
+```bash
+helm install my-ratecap deploy/helm/ratecap \
+  --set sharedSecret.existingSecretName=ratecap-shared-secret \
+  --set concurrencySigningKey.existingSecretName=ratecap-concurrency-signing-key \
+  --set criticalRoutes.enabled=true \
+  --set-string criticalRoutes.yaml='critical_routes:
+  - "POST /v1/charges"
+  - "POST /v1/payment_intents"'
+```
+
+Or set `criticalRoutes.yaml` in a values override file instead of `--set-string`, if your route list is longer than a one-liner. See `docs/superpowers/specs/2026-09-02-tier-3-critical-routes-design.md` for the feature itself (route header matching, priority precedence order).
+
 ## Health checks
 
 - `core` is probed via Kubernetes' native `grpc` probe action against the dedicated health port (`core.healthPort`, default `9091`) — a separate, always-plaintext port from the main gRPC port (`core.grpcPort`), specifically so the probe keeps working even when mTLS is enabled on the main port (Kubernetes' `grpc` probe action has no TLS/client-cert support).
