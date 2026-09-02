@@ -82,7 +82,9 @@ func Watch(path string) (*Set, func(), error) {
 	}
 
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		for {
 			select {
 			case event, ok := <-watcher.Events:
@@ -108,7 +110,21 @@ func Watch(path string) (*Set, func(), error) {
 		}
 	}()
 
+	// stop is synchronous: it blocks until the watcher goroutine has actually
+	// exited, not just until the shutdown signal has been sent. Without this,
+	// a caller (or, in tests, the next test's t.TempDir() cleanup racing a
+	// still-running goroutine from the PREVIOUS test) can observe the
+	// goroutine still alive and reacting to filesystem events after stop()
+	// returns -- exactly the cross-test interference that caused
+	// TestWatch_KeepsLastKnownGoodOnMalformedReload to flake under CI's -race
+	// overhead (a leaked goroutine from an earlier, already-torn-down test
+	// was still running concurrently).
 	var once sync.Once
-	stop := func() { once.Do(func() { close(done) }) }
+	stop := func() {
+		once.Do(func() {
+			close(done)
+			<-stopped
+		})
+	}
 	return s, stop, nil
 }
