@@ -1,0 +1,13 @@
+# Hash-pinned CI-tooling dependency for ci.yml's python-sdk job.
+# coverage 7.16.0 has zero transitive dependencies on Python 3.12 (its only
+# requires_dist entry, tomli, is gated to <=3.11 and the unused [toml]
+# extra), so this file pins exactly one package. Installed with
+# `pip install --require-hashes -r requirements-ci.txt`, kept separate from
+# `pip install --no-deps -e .` because pip refuses --require-hashes in the
+# same invocation as an editable install. Hash is the sha256 digest PyPI
+# reports for the cp312-manylinux_x86_64 wheel (the file CI's
+# ubuntu-latest/Python 3.12 runner actually resolves), taken from
+# https://pypi.org/pypi/coverage/7.16.0/json. Regenerate when bumping the
+# coverage version.
+coverage==7.16.0 \
+    --hash=sha256:719a3feb6220dd32ed932d4c3676d17fb8739e2643b29c0e7c3af400ff80ac44

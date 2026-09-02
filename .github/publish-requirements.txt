@@ -1,0 +1,17 @@
+# Hash-pinned CI-tooling dependencies for publish-python-sdk.yml's "Install
+# build" step. `build` 1.6.0 on Python 3.12/Linux with no extras pulls in
+# exactly `packaging` and `pyproject_hooks` (its other requires_dist entries
+# are Windows-only, py<3.10.2-only, py<3.11-only, or extras-gated) and both
+# are leaf packages with zero further dependencies, so this file's closure
+# is complete. Installed with `pip install --require-hashes -r
+# .github/publish-requirements.txt`. All three ship a single universal
+# `py3-none-any` wheel, so one hash per package covers every platform.
+# Hashes are the sha256 digests PyPI reports for those wheels, taken from
+# https://pypi.org/pypi/<package>/<version>/json. Regenerate when bumping
+# any of these versions.
+build==1.6.0 \
+    --hash=sha256:f7aaf1ebbb79178a02ba248bb524f2176b256017e17e8e4bd4289c7b38cc2bad
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pyproject_hooks==1.2.0 \
+    --hash=sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913

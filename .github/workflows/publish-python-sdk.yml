@@ -20,7 +20,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install build
-        run: pip install build
+        # See .github/publish-requirements.txt for the hash-pinned
+        # build/packaging/pyproject_hooks closure and how it was derived.
+        run: pip install --require-hashes -r .github/publish-requirements.txt
 
       - name: Build distributions
         working-directory: packages/sdks/python
