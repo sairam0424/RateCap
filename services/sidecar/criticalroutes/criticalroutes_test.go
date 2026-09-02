@@ -159,10 +159,20 @@ func TestWatch_KeepsLastKnownGoodOnMalformedReload(t *testing.T) {
 	defer stop()
 
 	writeRoutesFile(t, dir, "critical-routes.yaml", "critical_routes: [\n  not valid yaml")
-	time.Sleep(200 * time.Millisecond)
 
-	if !s.Contains("POST /v1/charges") {
-		t.Error("expected the last-known-good route set to still be served after a malformed rewrite")
+	// Poll instead of a single fixed-delay check: a one-shot sleep-then-check
+	// races the watcher goroutine picking up the fsnotify event and attempting
+	// (and failing) the reload, exactly the flakiness pattern already known in
+	// services/core/config's TestWatch_DebouncesRapidFireEvents. Asserting on
+	// every iteration (not just once at the deadline) means a genuine bug --
+	// the set ever actually adopting the malformed/empty value -- is still
+	// caught immediately, regardless of how long the reload attempt takes.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !s.Contains("POST /v1/charges") {
+			t.Fatal("expected the last-known-good route set to still be served after a malformed rewrite")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
