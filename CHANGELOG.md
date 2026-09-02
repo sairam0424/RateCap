@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-09-02 — `critical_routes` Priority Resolution + IETF `RateLimit-Limit`/`RateLimit-Remaining` Headers
+
+Minor release: closes two long-deferred leftover-work items, each shipped through this project's full design-spec-and-sign-off process (`docs/superpowers/specs/2026-09-02-tier-3-critical-routes-design.md`, `docs/superpowers/specs/2026-09-02-ratelimit-limit-remaining-headers-design.md`).
+
+### Added
+
+- **`critical_routes` priority-resolution fallback** — completes the v1 spec's deferred fallback-order step 2 (header → route match → global default). Callers declare a route label via a new `x-ratecap-route` header, `WithRoute(...)` (Go SDK), or `route=` (Python SDK); the sidecar matches it against a small local, hot-reloaded config file (new `services/sidecar/criticalroutes` package, mirroring the sidecar's existing TLS-cert-reload pattern) via the new, optional `RATECAP_CRITICAL_ROUTES_PATH` env var. Zero proto change — an explicit `x-ratecap-priority` header still outranks a route match.
+- **`RateLimit-Limit`/`RateLimit-Remaining` response headers** (IETF `draft-ietf-httpapi-ratelimit-headers`) — closes the gap `v2.8.0` deliberately left partial. `token_bucket.lua`'s already-computed token count now flows through `CheckRateLimitResponse` to the HTTP response, strictly scoped to Tier 1 (`rate_limiter`) `429`s — Tier 2's concurrency-cap rejections and the sidecar's negative-cache short-circuit path correctly omit them, since neither has a token-bucket-shaped "remaining" value to report. Both SDKs updated to parse the new headers.
+
+### Note
+
+The Python SDK's separate, pre-existing gap of never parsing `RateLimit-Reset` at all is deliberately **not** fixed here — tracked as its own later, narrow fix, matching the precedent an earlier standalone Go SDK fix (`0c79271`) already set for the same class of gap.
+
 ## [2.12.2] — 2026-09-01 — Fix Helm Chart's Unqualified Image References
 
 Patch: Artifact Hub emailed a scan failure for the `ratecap` chart (`error scanning image ratecap-core:latest: image not found`). Root cause was more than cosmetic: `deploy/helm/ratecap/values.yaml`'s `core`/`sidecar`/`sampleapp` image repositories were bare names (`ratecap-core`, etc.) with no registry — a deliberate choice at the chart's original design time (`docs/superpowers/specs/2026-07-19-v2-phase-4c-helm-chart-design.md` §2: "registry-agnostic chart... publishing it as an indexed repo is a future concern, not part of this sub-project"). That future concern shipped in v2.11.0 (real GHCR images, real OCI chart publish, real Artifact Hub listing) but `values.yaml`'s defaults were never updated to match, so an unqualified image name resolves against Docker Hub by default — both for Kubernetes' own image pull and for Artifact Hub's scanner — where these images have never existed. **Any real user running `helm install ratecap oci://ghcr.io/sairam0424/charts/ratecap` with default values would have hit `ImagePullBackOff`**, not just Artifact Hub's scan; no CI job ever caught this because `helm-lint` only lints/templates (never pulls images) and `e2e-smoke` deploys via `docker-compose`, entirely bypassing this chart.

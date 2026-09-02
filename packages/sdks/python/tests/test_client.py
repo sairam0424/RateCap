@@ -39,6 +39,21 @@ class TestAllow(unittest.TestCase):
             self.assertFalse(result.allowed)
             self.assertEqual(result.retry_after_ms, 750)
 
+    def test_allow_returns_rate_limit_limit_and_remaining_on_429(self):
+        def handler(method, path, query, headers):
+            return 429, {
+                "Retry-After-Ms": "750",
+                "RateLimit-Limit": "500",
+                "RateLimit-Remaining": "0",
+            }
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            result = client.allow("user-1")
+            self.assertFalse(result.allowed)
+            self.assertEqual(result.rate_limit_limit, 500)
+            self.assertEqual(result.rate_limit_remaining, 0)
+
     def test_requests_skip_reservations(self):
         captured = {}
 
@@ -80,6 +95,21 @@ class TestAcquire(unittest.TestCase):
             client = Client(sidecar.url)
             client.acquire("user-1")
             self.assertNotIn("skip_reservations", captured)
+
+    def test_acquire_returns_rate_limit_limit_and_remaining_on_429(self):
+        def handler(method, path, query, headers):
+            return 429, {
+                "Retry-After-Ms": "750",
+                "RateLimit-Limit": "500",
+                "RateLimit-Remaining": "0",
+            }
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            ticket = client.acquire("user-1")
+            self.assertFalse(ticket.allowed)
+            self.assertEqual(ticket.rate_limit_limit, 500)
+            self.assertEqual(ticket.rate_limit_remaining, 0)
 
     def test_release_releases_every_reservation(self):
         release_calls = []
@@ -242,6 +272,33 @@ class TestCostAndPriority(unittest.TestCase):
             # matching this file's own established convention of asserting
             # "X-Ratecap-Concurrency-Key" rather than "X-RateCap-...".
             self.assertEqual(captured.get("X-Ratecap-Priority"), "critical")
+
+    def test_allow_sends_route_header_when_given(self):
+        captured = {}
+
+        def handler(method, path, query, headers):
+            captured.update(headers)
+            return 200, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            client.allow("user-1", route="POST /v1/charges")
+            self.assertEqual(captured.get("X-Ratecap-Route"), "POST /v1/charges")
+
+    def test_acquire_sends_route_header_when_given(self):
+        captured_headers = {}
+
+        def handler(method, path, query, headers):
+            if path == "/check":
+                captured_headers.update(headers)
+            return 200, {}
+
+        with FakeSidecar(handler) as sidecar:
+            client = Client(sidecar.url)
+            client.acquire("user-1", route="POST /v1/charges")
+            self.assertEqual(
+                captured_headers.get("X-Ratecap-Route"), "POST /v1/charges"
+            )
 
     def test_acquire_sends_cost_and_priority(self):
         captured_query = {}

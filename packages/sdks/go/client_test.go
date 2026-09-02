@@ -17,7 +17,7 @@ func TestAllow_ReturnsTrueOn200(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	allowed, _, _, err := client.Allow(context.Background(), "user-1")
+	allowed, _, _, _, _, err := client.Allow(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestAllow_ReturnsFalseWithRetryAfterAndRateLimitResetOn429(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	allowed, retryAfterMs, rateLimitReset, err := client.Allow(context.Background(), "user-1")
+	allowed, retryAfterMs, rateLimitReset, _, _, err := client.Allow(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,6 +50,32 @@ func TestAllow_ReturnsFalseWithRetryAfterAndRateLimitResetOn429(t *testing.T) {
 	}
 }
 
+func TestAllow_ReturnsRateLimitLimitAndRemainingOn429(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After-Ms", "750")
+		w.Header().Set("RateLimit-Reset", "3")
+		w.Header().Set("RateLimit-Limit", "500")
+		w.Header().Set("RateLimit-Remaining", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	allowed, _, _, rateLimitLimit, rateLimitRemaining, err := client.Allow(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allowed {
+		t.Error("expected allowed=false on 429 response")
+	}
+	if rateLimitLimit != 500 {
+		t.Errorf("expected rateLimitLimit=500, got %d", rateLimitLimit)
+	}
+	if rateLimitRemaining != 0 {
+		t.Errorf("expected rateLimitRemaining=0, got %d", rateLimitRemaining)
+	}
+}
+
 func TestAllow_ReturnsFalseOn503(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -57,7 +83,7 @@ func TestAllow_ReturnsFalseOn503(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	allowed, _, _, err := client.Allow(context.Background(), "user-1")
+	allowed, _, _, _, _, err := client.Allow(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,7 +101,7 @@ func TestAllow_RequestsSkipReservations(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
+	if _, _, _, _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -141,6 +167,32 @@ func TestAcquire_ReturnsRejectedTicketWithRetryAfterAndRateLimitResetOn429(t *te
 	}
 	if ticket.RateLimitReset != 3 {
 		t.Errorf("expected RateLimitReset=3, got %d", ticket.RateLimitReset)
+	}
+}
+
+func TestAcquire_ReturnsRateLimitLimitAndRemainingOn429(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After-Ms", "750")
+		w.Header().Set("RateLimit-Reset", "3")
+		w.Header().Set("RateLimit-Limit", "500")
+		w.Header().Set("RateLimit-Remaining", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	ticket, err := client.Acquire(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ticket.Allowed {
+		t.Error("expected Allowed=false on 429 response")
+	}
+	if ticket.RateLimitLimit != 500 {
+		t.Errorf("expected RateLimitLimit=500, got %d", ticket.RateLimitLimit)
+	}
+	if ticket.RateLimitRemaining != 0 {
+		t.Errorf("expected RateLimitRemaining=0, got %d", ticket.RateLimitRemaining)
 	}
 }
 
@@ -276,7 +328,7 @@ func TestAllow_WithCost_SendsCostQueryParam(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithCost(5)); err != nil {
+	if _, _, _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithCost(5)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -294,7 +346,7 @@ func TestAllow_WithoutCostOption_OmitsCostQueryParam(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
+	if _, _, _, _, _, err := client.Allow(context.Background(), "user-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -312,12 +364,48 @@ func TestAllow_WithPriority_SendsPriorityHeader(t *testing.T) {
 	defer server.Close()
 
 	client := ratecap.NewClient(server.URL)
-	if _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithPriority(ratecap.Critical)); err != nil {
+	if _, _, _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithPriority(ratecap.Critical)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if capturedHeader != "critical" {
 		t.Errorf(`expected x-ratecap-priority: critical, got %q`, capturedHeader)
+	}
+}
+
+func TestAllow_WithRoute_SendsRouteHeader(t *testing.T) {
+	var capturedHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeader = r.Header.Get("x-ratecap-route")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, _, _, _, _, err := client.Allow(context.Background(), "user-1", ratecap.WithRoute("POST /v1/charges")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedHeader != "POST /v1/charges" {
+		t.Errorf(`expected x-ratecap-route: "POST /v1/charges", got %q`, capturedHeader)
+	}
+}
+
+func TestAcquire_WithRoute_SendsRouteHeader(t *testing.T) {
+	var capturedHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeader = r.Header.Get("x-ratecap-route")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := ratecap.NewClient(server.URL)
+	if _, err := client.Acquire(context.Background(), "user-1", ratecap.WithRoute("POST /v1/charges")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedHeader != "POST /v1/charges" {
+		t.Errorf(`expected x-ratecap-route: "POST /v1/charges", got %q`, capturedHeader)
 	}
 }
 
