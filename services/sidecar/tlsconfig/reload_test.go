@@ -145,6 +145,36 @@ func TestLoad_StopEndsTheWatcher(t *testing.T) {
 	stop()
 }
 
+// TestLoad_StopBlocksUntilWatcherGoroutineExits proves stop() is genuinely
+// synchronous, not just idempotent: a file rewrite issued immediately after
+// stop() returns must never be observed, because by then the watcher
+// goroutine has already exited and its fsnotify watcher is closed. Before
+// the fix (close(done) without waiting for the goroutine to exit), this test
+// was flaky -- the still-running goroutine could win the race and pick up
+// the post-stop rewrite.
+func TestLoad_StopBlocksUntilWatcherGoroutineExits(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := writeSelfSignedKeyPair(t, dir, "cert.pem", "key.pem", "sidecar-a")
+	caPath := writeCA(t, dir)
+
+	tlsConf, stop, err := tlsconfig.Load(certPath, keyPath, caPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stop()
+	writeSelfSignedKeyPair(t, dir, "cert.pem", "key.pem", "sidecar-after-stop")
+	time.Sleep(300 * time.Millisecond)
+
+	cert, err := tlsConf.GetClientCertificate(&tls.CertificateRequestInfo{})
+	if err != nil {
+		t.Fatalf("unexpected error calling GetClientCertificate: %v", err)
+	}
+	if cert.Leaf == nil || cert.Leaf.DNSNames[0] != "sidecar-a" {
+		t.Fatalf("expected the watcher to have stopped reloading after stop() returned, got cert for %v", cert.Leaf.DNSNames)
+	}
+}
+
 func TestLoad_KeepsLastKnownGoodOnReloadFailure(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeSelfSignedKeyPair(t, dir, "cert.pem", "key.pem", "sidecar-good")

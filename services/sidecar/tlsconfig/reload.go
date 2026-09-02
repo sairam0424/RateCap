@@ -34,7 +34,9 @@ func watchCert(certPath, keyPath string) (*reloadableCert, func(), error) {
 	}
 
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		for {
 			select {
 			case event, ok := <-watcher.Events:
@@ -57,8 +59,18 @@ func watchCert(certPath, keyPath string) (*reloadableCert, func(), error) {
 		}
 	}()
 
+	// stop is synchronous: it blocks until the watcher goroutine has actually
+	// exited, not just until the shutdown signal has been sent. Without this,
+	// a caller can observe the goroutine still alive and reacting to
+	// filesystem events after stop() returns -- the same async-stop gap fixed
+	// in criticalroutes.Watch's stop() (see that package's git history).
 	var once sync.Once
-	stop := func() { once.Do(func() { close(done) }) }
+	stop := func() {
+		once.Do(func() {
+			close(done)
+			<-stopped
+		})
+	}
 	return r, stop, nil
 }
 
