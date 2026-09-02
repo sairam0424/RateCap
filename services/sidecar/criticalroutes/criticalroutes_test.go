@@ -176,6 +176,56 @@ func TestWatch_KeepsLastKnownGoodOnMalformedReload(t *testing.T) {
 	}
 }
 
+// TestWatch_SurvivesTruncateThenWriteRace deterministically reproduces the
+// real bug the debounceWindow fixes: os.WriteFile's truncate-then-write can
+// be observed by the watcher as two separate fsnotify events, the first
+// against a transiently-EMPTY file. An empty document parses as valid, empty
+// YAML (no error) -- so without debouncing, the watcher "successfully"
+// reloads to an empty set before the second event (the real, final content)
+// ever arrives, silently defeating the "keep last-known-good" guarantee.
+// Manually spacing the truncate and write far enough apart (10ms) makes this
+// deterministic rather than depending on lucky/unlucky natural write timing
+// (confirmed: this test fails 5/5 without debounceWindow, passes 5/5 with it).
+func TestWatch_SurvivesTruncateThenWriteRace(t *testing.T) {
+	dir := t.TempDir()
+	path := writeRoutesFile(t, dir, "critical-routes.yaml", `critical_routes:
+  - "POST /v1/charges"
+`)
+
+	s, stop, err := criticalroutes.Watch(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer stop()
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0600) //nolint:gosec // test-only temp file
+	if err != nil {
+		t.Fatalf("failed to truncate %s: %v", path, err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close truncated %s: %v", path, err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	f2, err := os.OpenFile(path, os.O_WRONLY, 0600) //nolint:gosec // test-only temp file
+	if err != nil {
+		t.Fatalf("failed to reopen %s: %v", path, err)
+	}
+	if _, err := f2.WriteString("not valid yaml ["); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
+	}
+	if err := f2.Close(); err != nil {
+		t.Fatalf("failed to close %s: %v", path, err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !s.Contains("POST /v1/charges") {
+			t.Fatal("expected the last-known-good route set to survive a truncate-then-write race")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestWatch_StopEndsTheWatcher(t *testing.T) {
 	dir := t.TempDir()
 	path := writeRoutesFile(t, dir, "critical-routes.yaml", `critical_routes:
