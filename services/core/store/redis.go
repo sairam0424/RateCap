@@ -64,28 +64,32 @@ func signToken(candidateUUID string, signingKey []byte) string {
 const rateLimiterKeyPrefix = "rl:"
 const concurrencyKeyPrefix = "cc:"
 
-func (s *RedisStore) CheckAndDecrement(ctx context.Context, key string, rate, burst, cost int) (bool, int64, error) {
+func (s *RedisStore) CheckAndDecrement(ctx context.Context, key string, rate, burst, cost int) (bool, int64, int64, error) {
 	key = rateLimiterKeyPrefix + key
 	now := time.Now().UnixMilli()
 	start := time.Now()
 	result, err := s.tokenBucket.Run(ctx, s.client, []string{key}, rate, burst, cost, now).Slice()
 	coremetrics.RecordRedisCall("check_and_decrement", time.Since(start), err)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
-	if len(result) != 2 {
-		return false, 0, fmt.Errorf("store: unexpected lua script result shape: %v", result)
+	if len(result) != 3 {
+		return false, 0, 0, fmt.Errorf("store: unexpected lua script result shape: %v", result)
 	}
 
 	allowed, ok := result[0].(int64)
 	if !ok {
-		return false, 0, fmt.Errorf("store: unexpected allowed type %T in lua script result", result[0])
+		return false, 0, 0, fmt.Errorf("store: unexpected allowed type %T in lua script result", result[0])
 	}
 	retryAfterMs, ok := result[1].(int64)
 	if !ok {
-		return false, 0, fmt.Errorf("store: unexpected retryAfterMs type %T in lua script result", result[1])
+		return false, 0, 0, fmt.Errorf("store: unexpected retryAfterMs type %T in lua script result", result[1])
 	}
-	return allowed == 1, retryAfterMs, nil
+	remaining, ok := result[2].(int64)
+	if !ok {
+		return false, 0, 0, fmt.Errorf("store: unexpected remaining type %T in lua script result", result[2])
+	}
+	return allowed == 1, retryAfterMs, remaining, nil
 }
 
 func (s *RedisStore) IncrConcurrent(ctx context.Context, key string, cap int, maxDurationMs int64) (bool, string, error) {
