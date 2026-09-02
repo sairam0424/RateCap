@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Python SDK now parses `RateLimit-Reset`** — closes the gap `v2.13.0`'s own Note flagged as deliberately deferred, matching the precedent an earlier standalone Go SDK fix (`0c79271`) set for the same class of gap. `AllowResult`/`Ticket` gained a matching `rate_limit_reset` field.
+- **Fixed a real reload race in `services/sidecar/criticalroutes.Watch`**: `os.WriteFile`'s truncate-then-write can be observed by the fsnotify watcher as two separate events, the first against a transiently-empty file — which parses as valid, empty YAML, silently defeating the "keep last-known-good on malformed reload" guarantee. Added the same debounce window `services/core/config/watcher.go` already used for the identical reason, deterministically reproduced via a manually-spaced truncate/write regression test.
+- **Made `stop()` synchronous in `criticalroutes.Watch`, `tlsconfig.Watch`, and `config.Watch`** (three separate instances of the same bug class): each previously signaled shutdown and returned immediately, without waiting for the watcher goroutine to actually exit — allowing a caller (or, in tests, the next test's cleanup) to observe the goroutine still alive and reacting to filesystem events after `stop()` returned.
+- **Hash-pinned the `coverage`/`build` pip installs in CI** (`.github/workflows/ci.yml`, `.github/workflows/publish-python-sdk.yml`) to satisfy OpenSSF Scorecard's `Pinned-Dependencies` check, which requires `--require-hashes` regardless of whether a version is already pinned. The editable `ratecap` install is split into its own `--no-deps` invocation, since `pip install --require-hashes` unconditionally refuses to run alongside an editable install.
+
 ## [2.13.0] — 2026-09-02 — `critical_routes` Priority Resolution + IETF `RateLimit-Limit`/`RateLimit-Remaining` Headers
 
 Minor release: closes two long-deferred leftover-work items, each shipped through this project's full design-spec-and-sign-off process (`docs/superpowers/specs/2026-09-02-tier-3-critical-routes-design.md`, `docs/superpowers/specs/2026-09-02-ratelimit-limit-remaining-headers-design.md`).
