@@ -37,6 +37,8 @@ type checkOptions struct {
 	hasCost     bool
 	priority    Priority
 	hasPriority bool
+	route       string
+	hasRoute    bool
 }
 
 type CheckOption func(*checkOptions)
@@ -47,6 +49,10 @@ func WithCost(cost int) CheckOption {
 
 func WithPriority(p Priority) CheckOption {
 	return func(o *checkOptions) { o.priority, o.hasPriority = p, true }
+}
+
+func WithRoute(route string) CheckOption {
+	return func(o *checkOptions) { o.route, o.hasRoute = route, true }
 }
 
 func applyCheckOptions(opts []CheckOption) checkOptions {
@@ -64,31 +70,34 @@ func (o checkOptions) applyToRequest(req *http.Request, query url.Values) {
 	if o.hasPriority {
 		req.Header.Set("x-ratecap-priority", o.priority.headerValue())
 	}
+	if o.hasRoute {
+		req.Header.Set("x-ratecap-route", o.route)
+	}
 }
 
 // Allow is tier-1-only: it never establishes a tier-2 concurrency
 // reservation, since it has no matching Release call to free one. Skipping
 // tier 2 here (rather than leaking a slot per call) is what keeps Allow's
 // original fire-and-forget contract intact now that tier 2 exists.
-func (c *Client) Allow(ctx context.Context, key string, opts ...CheckOption) (allowed bool, retryAfterMs int64, rateLimitReset int64, err error) {
+func (c *Client) Allow(ctx context.Context, key string, opts ...CheckOption) (allowed bool, retryAfterMs int64, rateLimitReset int64, rateLimitLimit int64, rateLimitRemaining int64, err error) {
 	query := url.Values{"key": {key}, "skip_reservations": {"true"}}
 	options := applyCheckOptions(opts)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.sidecarAddr+"/check", nil)
 	if err != nil {
-		return false, 0, 0, err
+		return false, 0, 0, 0, 0, err
 	}
 	options.applyToRequest(req, query)
 	req.URL.RawQuery = query.Encode()
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return false, 0, 0, err
+		return false, 0, 0, 0, 0, err
 	}
 	defer resp.Body.Close() //nolint:errcheck // response body is never read further here; a Close error carries no new information beyond the already-inspected status code/headers
 
 	if resp.StatusCode == http.StatusOK {
-		return true, 0, 0, nil
+		return true, 0, 0, 0, 0, nil
 	}
 
 	if v := resp.Header.Get("Retry-After-Ms"); v != "" {
@@ -97,7 +106,13 @@ func (c *Client) Allow(ctx context.Context, key string, opts ...CheckOption) (al
 	if v := resp.Header.Get("RateLimit-Reset"); v != "" {
 		rateLimitReset, _ = strconv.ParseInt(v, 10, 64)
 	}
-	return false, retryAfterMs, rateLimitReset, nil
+	if v := resp.Header.Get("RateLimit-Limit"); v != "" {
+		rateLimitLimit, _ = strconv.ParseInt(v, 10, 64)
+	}
+	if v := resp.Header.Get("RateLimit-Remaining"); v != "" {
+		rateLimitRemaining, _ = strconv.ParseInt(v, 10, 64)
+	}
+	return false, retryAfterMs, rateLimitReset, rateLimitLimit, rateLimitRemaining, nil
 }
 
 type reservation struct {
@@ -106,9 +121,11 @@ type reservation struct {
 }
 
 type Ticket struct {
-	Allowed        bool
-	RetryAfterMs   int64
-	RateLimitReset int64
+	Allowed            bool
+	RetryAfterMs       int64
+	RateLimitReset     int64
+	RateLimitLimit     int64
+	RateLimitRemaining int64
 
 	client       *Client
 	key          string
@@ -213,12 +230,18 @@ func (c *Client) Acquire(ctx context.Context, key string, opts ...CheckOption) (
 		return &Ticket{Allowed: true, client: c, key: key, reservations: reservations}, nil
 	}
 
-	var retryAfterMs, rateLimitReset int64
+	var retryAfterMs, rateLimitReset, rateLimitLimit, rateLimitRemaining int64
 	if v := resp.Header.Get("Retry-After-Ms"); v != "" {
 		retryAfterMs, _ = strconv.ParseInt(v, 10, 64)
 	}
 	if v := resp.Header.Get("RateLimit-Reset"); v != "" {
 		rateLimitReset, _ = strconv.ParseInt(v, 10, 64)
 	}
-	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, RateLimitReset: rateLimitReset, client: c, key: key, reservations: reservations}, nil
+	if v := resp.Header.Get("RateLimit-Limit"); v != "" {
+		rateLimitLimit, _ = strconv.ParseInt(v, 10, 64)
+	}
+	if v := resp.Header.Get("RateLimit-Remaining"); v != "" {
+		rateLimitRemaining, _ = strconv.ParseInt(v, 10, 64)
+	}
+	return &Ticket{Allowed: false, RetryAfterMs: retryAfterMs, RateLimitReset: rateLimitReset, RateLimitLimit: rateLimitLimit, RateLimitRemaining: rateLimitRemaining, client: c, key: key, reservations: reservations}, nil
 }

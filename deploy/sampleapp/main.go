@@ -69,7 +69,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		allowed, retryAfterMs, _, err := client.Allow(ctx, "demo-user")
+		allowed, retryAfterMs, _, _, _, err := client.Allow(ctx, "demo-user")
 		if err != nil {
 			http.Error(w, "rate limit check failed", http.StatusInternalServerError)
 			return
@@ -113,10 +113,19 @@ func main() {
 		// known-safe, whitelisted label ("critical"/"sheddable") is ever
 		// echoed back in a response body below, never the caller-supplied
 		// string itself.
+		priorityParam := r.URL.Query().Get("priority")
 		priorityLabel := "sheddable"
-		if r.URL.Query().Get("priority") == "critical" {
+		if priorityParam == "critical" {
 			priorityLabel = "critical"
 		}
+
+		// routeParam demonstrates Tier 3's critical_routes fallback (step 2
+		// of the v1 spec's priority-resolution order, closed by
+		// docs/superpowers/specs/2026-09-02-tier-3-critical-routes-design.md):
+		// unlike priorityLabel above, this is not whitelisted before being
+		// forwarded, since it is never echoed back in a response body, only
+		// set as an outgoing request header.
+		routeParam := r.URL.Query().Get("route")
 
 		// A fresh key per request keeps tier 1 (per-key token bucket) and
 		// tier 2 (per-key concurrency cap) from ever tripping here — this
@@ -131,7 +140,18 @@ func main() {
 			http.Error(w, "request construction failed", http.StatusInternalServerError)
 			return
 		}
-		checkReq.Header.Set("x-ratecap-priority", priorityLabel)
+		// Only an explicit priority query param sends the x-ratecap-priority
+		// header at all — omitting it (rather than always defaulting to
+		// "sheddable") is what lets ?route=... alone actually exercise
+		// step 2's fallback end to end: a route match with no priority
+		// header still resolves to critical, per the design spec's Decision
+		// #4 precedence contract.
+		if priorityParam == "critical" || priorityParam == "sheddable" {
+			checkReq.Header.Set("x-ratecap-priority", priorityLabel)
+		}
+		if routeParam != "" {
+			checkReq.Header.Set("x-ratecap-route", routeParam)
+		}
 
 		resp, err := http.DefaultClient.Do(checkReq) //nolint:gosec // checkReq's URL is built from trusted config above, not attacker input
 		if err != nil {
@@ -159,7 +179,7 @@ func main() {
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close() //nolint:errcheck,gosec // status code already read; Close error carries no new information
 			w.WriteHeader(resp.StatusCode)
-			fmt.Fprintf(w, "shed (priority=%s)\n", priorityLabel) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
+			fmt.Fprintf(w, "shed (priority=%s, route-header-set=%v)\n", priorityLabel, routeParam != "") //nolint:errcheck,gosec // demo response write; routeParam != "" is a bool, never the raw caller-supplied route string itself
 			releaseAll(releaseKeys, sidecarBase)
 			return
 		}
@@ -169,7 +189,7 @@ func main() {
 
 		releaseAll(releaseKeys, sidecarBase)
 
-		fmt.Fprintf(w, "fleet request processed (priority=%s)\n", priorityLabel) //nolint:errcheck // demo response write; nothing actionable if the client already disconnected
+		fmt.Fprintf(w, "fleet request processed (priority=%s, route-header-set=%v)\n", priorityLabel, routeParam != "") //nolint:errcheck,gosec // demo response write; routeParam != "" is a bool, never the raw caller-supplied route string itself
 	})
 
 	http.HandleFunc("/worker-demo", func(w http.ResponseWriter, r *http.Request) {

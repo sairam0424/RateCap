@@ -270,7 +270,7 @@ func runBench(ctx context.Context, progress io.Writer, sidecarAddr string, concu
 				ticket.Release(ctx) //nolint:errcheck,gosec // see comment above
 			}
 		} else {
-			allowed, _, _, err := client.Allow(ctx, key)
+			allowed, _, _, _, _, err := client.Allow(ctx, key)
 			switch {
 			case err != nil:
 				kind = "errored"

@@ -22,12 +22,12 @@ func newFakeStore() *fakeStore {
 	return &fakeStore{tokens: make(map[string]int)}
 }
 
-func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, cost int) (bool, int64, error) {
+func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, cost int) (bool, int64, int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	if f.err != nil {
-		return false, 0, f.err
+		return false, 0, 0, f.err
 	}
 
 	remaining, ok := f.tokens[key]
@@ -36,9 +36,9 @@ func (f *fakeStore) CheckAndDecrement(_ context.Context, key string, _, burst, c
 	}
 	if remaining >= cost {
 		f.tokens[key] = remaining - cost
-		return true, 0, nil
+		return true, 0, int64(remaining - cost), nil
 	}
-	return false, 100, nil
+	return false, 100, int64(remaining), nil
 }
 
 func TestTokenBucketLimiter_AllowsExactlyBurstRequests(t *testing.T) {
@@ -231,4 +231,94 @@ func TestTokenBucketLimiter_SetRate_ConcurrentWithCheckIsRaceFree(t *testing.T) 
 		}()
 	}
 	wg.Wait()
+}
+
+func TestTokenBucketLimiter_Check_ReportsLimitAndRemainingOnAllow(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 5, false)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Limit != 5 {
+		t.Errorf("expected Limit=5, got %d", d.Limit)
+	}
+	if d.Remaining != 4 {
+		t.Errorf("expected Remaining=4, got %d", d.Remaining)
+	}
+}
+
+func TestTokenBucketLimiter_Check_ReportsLimitAndRemainingOnReject429(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 1, false)
+	ctx := context.Background()
+
+	if _, err := l.Check(ctx, limiter.Request{Key: "user-1", Cost: 1}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	d, err := l.Check(ctx, limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.REJECT_429 {
+		t.Fatalf("expected REJECT_429, got %v", d.Action)
+	}
+	if d.Limit != 1 {
+		t.Errorf("expected Limit=1, got %d", d.Limit)
+	}
+	if d.Remaining != 0 {
+		t.Errorf("expected Remaining=0, got %d", d.Remaining)
+	}
+}
+
+func TestTokenBucketLimiter_Check_ReportsUpdatedLimitAfterReconfigure(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 500, false)
+
+	l.Reconfigure(10, 250, false)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Limit != 250 {
+		t.Errorf("expected Limit=250 after Reconfigure, got %d", d.Limit)
+	}
+}
+
+func TestTokenBucketLimiter_Check_SetRateDoesNotChangeLimit(t *testing.T) {
+	fs := newFakeStore()
+	l := limiter.NewTokenBucketLimiter(fs, 10, 500, false)
+
+	l.SetRate(999)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Limit != 500 {
+		t.Errorf("expected Limit=500 unchanged by SetRate, got %d", d.Limit)
+	}
+}
+
+func TestTokenBucketLimiter_Check_OmitsLimitAndRemainingOnFailOpen(t *testing.T) {
+	fs := newFakeStore()
+	fs.err = errors.New("dial tcp: connection refused")
+	l := limiter.NewTokenBucketLimiter(fs, 100, 500, false)
+
+	d, err := l.Check(context.Background(), limiter.Request{Key: "user-1", Cost: 1})
+	if err != nil {
+		t.Fatalf("expected fail-open (no error), got: %v", err)
+	}
+	if d.Action != limiter.ALLOW {
+		t.Errorf("expected Action=ALLOW on a store error (fail-open), got %v", d.Action)
+	}
+	if d.Limit != 0 {
+		t.Errorf("expected Limit=0 on fail-open, got %d", d.Limit)
+	}
+	if d.Remaining != 0 {
+		t.Errorf("expected Remaining=0 on fail-open, got %d", d.Remaining)
+	}
 }
