@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
+	"github.com/sairam0424/RateCap/services/sidecar/criticalroutes"
 	"github.com/sairam0424/RateCap/services/sidecar/decisionlog"
 	"github.com/sairam0424/RateCap/services/sidecar/metrics"
 	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
@@ -281,6 +283,103 @@ func TestServeHTTP_DefaultsToSheddablePriorityWhenNoHeader(t *testing.T) {
 	}
 	if client.lastReq.Priority != ratecapv1.Priority_SHEDDABLE {
 		t.Errorf("expected Priority_SHEDDABLE by default, got %v", client.lastReq.Priority)
+	}
+}
+
+func newCriticalRoutesSet(t *testing.T, routes ...string) *criticalroutes.Set {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "critical-routes.yaml")
+
+	var sb strings.Builder
+	sb.WriteString("critical_routes:\n")
+	for _, route := range routes {
+		sb.WriteString("  - \"" + route + "\"\n")
+	}
+	if err := os.WriteFile(path, []byte(sb.String()), 0600); err != nil {
+		t.Fatalf("failed to write critical routes fixture: %v", err)
+	}
+
+	set, stop, err := criticalroutes.Watch(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Cleanup(stop)
+	return set
+}
+
+func TestServeHTTP_ThreadsRouteMatchIntoRequestWhenNoPriorityHeader(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	critical := newCriticalRoutesSet(t, "POST /v1/charges")
+	h := proxy.NewHandlerWithCriticalRoutes(client, proxy.Sheddable, worker.NewShedder(1000), negativecache.New(), critical)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-route", "POST /v1/charges")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_CRITICAL {
+		t.Errorf("expected Priority_CRITICAL on the outgoing request from a route match with no priority header, got %v", client.lastReq.Priority)
+	}
+}
+
+func TestServeHTTP_HeaderPriorityOutranksRouteMatch(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	critical := newCriticalRoutesSet(t, "POST /v1/charges")
+	h := proxy.NewHandlerWithCriticalRoutes(client, proxy.Sheddable, worker.NewShedder(1000), negativecache.New(), critical)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-route", "POST /v1/charges")
+	req.Header.Set("x-ratecap-priority", "sheddable")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_SHEDDABLE {
+		t.Errorf("expected an explicit sheddable priority header to outrank a matching critical route, got %v", client.lastReq.Priority)
+	}
+}
+
+func TestServeHTTP_NoRouteHeaderWithCriticalRoutesConfiguredFallsBackToDefault(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	critical := newCriticalRoutesSet(t, "POST /v1/charges")
+	h := proxy.NewHandlerWithCriticalRoutes(client, proxy.Sheddable, worker.NewShedder(1000), negativecache.New(), critical)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_SHEDDABLE {
+		t.Errorf("expected default Sheddable priority when neither header nor route matches, got %v", client.lastReq.Priority)
+	}
+}
+
+func TestServeHTTP_NilCriticalRoutesIsANoOp(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	h := proxy.NewHandlerWithCriticalRoutes(client, proxy.Sheddable, worker.NewShedder(1000), negativecache.New(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	req.Header.Set("x-ratecap-route", "POST /v1/charges")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if client.lastReq == nil {
+		t.Fatal("expected CheckRateLimit to be called")
+	}
+	if client.lastReq.Priority != ratecapv1.Priority_SHEDDABLE {
+		t.Errorf("expected a nil *criticalroutes.Set to never match, falling back to default Sheddable, got %v", client.lastReq.Priority)
 	}
 }
 
@@ -895,6 +994,46 @@ func TestServeHTTP_Reject429SetsIETFRateLimitResetHeader(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_Reject429FromRateLimiterSetsLimitAndRemainingHeaders(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, Tier: "rate_limiter", Limit: 500, Remaining: 0}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("RateLimit-Limit"); got != "500" {
+		t.Errorf(`expected RateLimit-Limit="500", got %q`, got)
+	}
+	if got := rec.Header().Get("RateLimit-Remaining"); got != "0" {
+		t.Errorf(`expected RateLimit-Remaining="0", got %q`, got)
+	}
+}
+
+func TestServeHTTP_Reject429FromConcurrencyLimiterOmitsLimitAndRemainingHeaders(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_REJECT_429, Tier: "concurrency_limiter", RetryAfterMs: 500}}
+	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("RateLimit-Limit"); got != "" {
+		t.Errorf("expected no RateLimit-Limit header on a concurrency_limiter rejection, got %q", got)
+	}
+	if got := rec.Header().Get("RateLimit-Remaining"); got != "" {
+		t.Errorf("expected no RateLimit-Remaining header on a concurrency_limiter rejection, got %q", got)
+	}
+	if got := rec.Header().Get("Retry-After-Ms"); got != "500" {
+		t.Errorf("expected Retry-After-Ms to still be set on a concurrency_limiter rejection, got %q", got)
+	}
+	if got := rec.Header().Get("RateLimit-Reset"); got != "1" {
+		t.Errorf("expected RateLimit-Reset to still be set on a concurrency_limiter rejection, got %q", got)
+	}
+}
+
 func TestServeHTTP_AllowDoesNotSetRateLimitResetHeader(t *testing.T) {
 	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
 	h := proxy.NewHandler(client, proxy.Sheddable, worker.NewShedder(100))
@@ -958,6 +1097,30 @@ func TestServeHTTP_CachedDenialRecordsMetricsAndDecisionLog(t *testing.T) {
 	after := testutil.ToFloat64(metrics.DecisionsTotal.WithLabelValues("negative_cache", "reject_429"))
 	if after != before+1 {
 		t.Errorf("expected ratecap_decisions_total{tier=negative_cache,action=reject_429} to increment on a cache-short-circuited denial (so dashboards/alerts don't under-report rejection volume for repeat offenders), before=%v after=%v", before, after)
+	}
+}
+
+func TestServeHTTP_NegativeCacheShortCircuitOmitsLimitAndRemainingHeaders(t *testing.T) {
+	client := &fakeRatecapClient{resp: &ratecapv1.CheckRateLimitResponse{Action: ratecapv1.Action_ALLOW}}
+	cache := negativecache.New()
+	cache.MarkDenied("user-1", 2500*time.Millisecond)
+	h := proxy.NewHandlerWithCache(client, proxy.Sheddable, worker.NewShedder(100), cache)
+
+	req := httptest.NewRequest(http.MethodGet, "/check?key=user-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("RateLimit-Limit"); got != "" {
+		t.Errorf("expected no RateLimit-Limit header on a cache-short-circuited 429 (negativecache.Cache has no tier/limit data), got %q", got)
+	}
+	if got := rec.Header().Get("RateLimit-Remaining"); got != "" {
+		t.Errorf("expected no RateLimit-Remaining header on a cache-short-circuited 429, got %q", got)
+	}
+	if got := rec.Header().Get("Retry-After-Ms"); got == "" {
+		t.Error("expected Retry-After-Ms to still be set on a cache-short-circuited 429")
+	}
+	if got := rec.Header().Get("RateLimit-Reset"); got == "" {
+		t.Error("expected RateLimit-Reset to still be set on a cache-short-circuited 429")
 	}
 }
 

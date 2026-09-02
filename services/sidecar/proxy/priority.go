@@ -9,13 +9,15 @@ const (
 	Critical  = limiter.Critical
 )
 
-func ResolvePriority(headerValue string, defaultPriority Priority) Priority {
+func ResolvePriority(headerValue string, routeMatched bool, defaultPriority Priority) Priority {
 	switch headerValue {
 	case "critical":
 		return Critical
 	case "sheddable":
 		return Sheddable
-	default:
-		return defaultPriority
 	}
+	if routeMatched {
+		return Critical
+	}
+	return defaultPriority
 }

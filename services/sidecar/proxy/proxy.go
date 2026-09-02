@@ -15,6 +15,7 @@ import (
 
 	ratecapv1 "github.com/sairam0424/RateCap/proto/ratecap/v1"
 
+	"github.com/sairam0424/RateCap/services/sidecar/criticalroutes"
 	"github.com/sairam0424/RateCap/services/sidecar/decisionlog"
 	"github.com/sairam0424/RateCap/services/sidecar/metrics"
 	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
@@ -46,6 +47,7 @@ type Handler struct {
 	defaultPriority Priority
 	shedder         *worker.Shedder
 	negativeCache   *negativecache.Cache
+	criticalRoutes  *criticalroutes.Set
 }
 
 func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder) *Handler {
@@ -57,6 +59,17 @@ func NewHandler(client ratecapClient, defaultPriority Priority, shedder *worker.
 // every existing call site of NewHandler keeps compiling unchanged.
 func NewHandlerWithCache(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder, cache *negativecache.Cache) *Handler {
 	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder, negativeCache: cache}
+}
+
+// NewHandlerWithCriticalRoutes is NewHandlerWithCache plus the
+// critical_routes priority-resolution fallback (step 2 of the v1 spec's
+// 3-step order) — kept as its own constructor for the same reason
+// NewHandlerWithCache is: every existing call site of NewHandler and
+// NewHandlerWithCache keeps compiling unchanged. criticalRoutes may be nil
+// (Set.Contains is nil-receiver-safe), which is how an operator who never
+// sets RATECAP_CRITICAL_ROUTES_PATH gets byte-for-byte unchanged behavior.
+func NewHandlerWithCriticalRoutes(client ratecapClient, defaultPriority Priority, shedder *worker.Shedder, cache *negativecache.Cache, criticalRoutes *criticalroutes.Set) *Handler {
+	return &Handler{client: client, defaultPriority: defaultPriority, shedder: shedder, negativeCache: cache, criticalRoutes: criticalRoutes}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +86,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), h.defaultPriority)
+	routeMatched := h.criticalRoutes.Contains(r.Header.Get("x-ratecap-route"))
+	priority := ResolvePriority(r.Header.Get("x-ratecap-priority"), routeMatched, h.defaultPriority)
 	protoPriority := ratecapv1.Priority_SHEDDABLE
 	if priority == Critical {
 		protoPriority = ratecapv1.Priority_CRITICAL
@@ -195,6 +209,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// reset field is in whole seconds, and rounding down would tell a
 		// caller it's safe to retry slightly before it actually is.
 		w.Header().Set("RateLimit-Reset", strconv.FormatInt((resp.RetryAfterMs+999)/1000, 10))
+		// Limit/Remaining are a token-bucket-shaped concept; gated to the
+		// tier that actually rejected this request (resp.Tier is
+		// unambiguous here — see Pipeline.Check's short-circuit-on-reject
+		// control flow) so a concurrency_limiter 429 never reports a
+		// throughput metric for what is really an in-flight cap.
+		if resp.Tier == "rate_limiter" {
+			w.Header().Set("RateLimit-Limit", strconv.FormatInt(resp.Limit, 10))
+			w.Header().Set("RateLimit-Remaining", strconv.FormatInt(resp.Remaining, 10))
+		}
 		w.WriteHeader(http.StatusTooManyRequests)
 	case ratecapv1.Action_REJECT_503:
 		w.Header().Set("X-RateCap-Shed-Tier", "3")
