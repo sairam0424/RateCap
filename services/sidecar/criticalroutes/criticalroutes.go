@@ -7,10 +7,25 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v3"
 )
+
+// debounceWindow coalesces the multiple fsnotify events a single logical
+// file write can produce (e.g. os.WriteFile's truncate-then-write on Linux
+// inotify) into one reload of the final on-disk content -- mirroring
+// services/core/config/watcher.go's identical mechanism and rationale.
+// Without this, the watcher goroutine can observe the file mid-write, in a
+// transiently-truncated (empty) state; an empty document parses as valid,
+// empty YAML (no error), so the "keep last-known-good on malformed reload"
+// guarantee never engages -- the set is silently, successfully "reloaded"
+// to empty instead. Decision #1 of this package's design spec characterized
+// debouncing as purely an efficiency concern for a low-frequency file and
+// deliberately omitted it; that was incomplete -- it also guards a real
+// correctness gap, confirmed by a genuine (not test-only) CI failure.
+const debounceWindow = 50 * time.Millisecond
 
 type fileFormat struct {
 	CriticalRoutes []string `yaml:"critical_routes"`
@@ -57,12 +72,12 @@ func (s *Set) Contains(route string) bool {
 	return ok
 }
 
-// Watch loads path once, then hot-reloads on every write to it, atomically
-// swapping in the new set and logging-and-keeping-the-last-known-good set on
-// a malformed reload — mirroring tlsconfig/reload.go's watchCert exactly,
-// deliberately without config/watcher.go's debounce window (Decision #1: a
-// route-allowlist file changes at ops cadence, not a cadence worth guarding
-// against duplicate fsnotify events for).
+// Watch loads path once, then hot-reloads on every (debounced) write to it,
+// atomically swapping in the new set and logging-and-keeping-the-last-known-
+// good set on a malformed reload. Debounces on the same window and for the
+// same correctness reason as config/watcher.go (see debounceWindow) —
+// Decision #1 of this package's design spec originally omitted this, which
+// was a real gap, not just a missed optimization.
 func Watch(path string) (*Set, func(), error) {
 	routes, err := Load(path)
 	if err != nil {
@@ -83,6 +98,10 @@ func Watch(path string) (*Set, func(), error) {
 
 	done := make(chan struct{})
 	stopped := make(chan struct{})
+	timer := time.NewTimer(debounceWindow)
+	if !timer.Stop() {
+		<-timer.C
+	}
 	go func() {
 		defer close(stopped)
 		for {
@@ -91,19 +110,32 @@ func Watch(path string) (*Set, func(), error) {
 				if !ok {
 					return
 				}
-				if event.Name == path {
-					reloaded, err := Load(path)
-					if err != nil {
-						log.Printf("criticalroutes: failed to reload %s, keeping last-known-good: %v", path, err)
-						continue
+				if event.Name == path && (event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0) {
+					// Draining before Reset avoids a stray already-fired value
+					// sitting in timer.C from being misread as the new window
+					// elapsing instantly; safe non-blockingly since this
+					// goroutine is the channel's only consumer.
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
 					}
-					s.routes.Store(&reloaded)
+					timer.Reset(debounceWindow)
 				}
+			case <-timer.C:
+				reloaded, err := Load(path)
+				if err != nil {
+					log.Printf("criticalroutes: failed to reload %s, keeping last-known-good: %v", path, err)
+					continue
+				}
+				s.routes.Store(&reloaded)
 			case _, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
 			case <-done:
+				timer.Stop()
 				_ = watcher.Close()
 				return
 			}
