@@ -39,12 +39,13 @@ class TestAllow(unittest.TestCase):
             self.assertFalse(result.allowed)
             self.assertEqual(result.retry_after_ms, 750)
 
-    def test_allow_returns_rate_limit_limit_and_remaining_on_429(self):
+    def test_allow_returns_rate_limit_limit_remaining_and_reset_on_429(self):
         def handler(method, path, query, headers):
             return 429, {
                 "Retry-After-Ms": "750",
                 "RateLimit-Limit": "500",
                 "RateLimit-Remaining": "0",
+                "RateLimit-Reset": "3",
             }
 
         with FakeSidecar(handler) as sidecar:
@@ -53,6 +54,7 @@ class TestAllow(unittest.TestCase):
             self.assertFalse(result.allowed)
             self.assertEqual(result.rate_limit_limit, 500)
             self.assertEqual(result.rate_limit_remaining, 0)
+            self.assertEqual(result.rate_limit_reset, 3)
 
     def test_requests_skip_reservations(self):
         captured = {}
@@ -96,12 +98,13 @@ class TestAcquire(unittest.TestCase):
             client.acquire("user-1")
             self.assertNotIn("skip_reservations", captured)
 
-    def test_acquire_returns_rate_limit_limit_and_remaining_on_429(self):
+    def test_acquire_returns_rate_limit_limit_remaining_and_reset_on_429(self):
         def handler(method, path, query, headers):
             return 429, {
                 "Retry-After-Ms": "750",
                 "RateLimit-Limit": "500",
                 "RateLimit-Remaining": "0",
+                "RateLimit-Reset": "3",
             }
 
         with FakeSidecar(handler) as sidecar:
@@ -110,6 +113,7 @@ class TestAcquire(unittest.TestCase):
             self.assertFalse(ticket.allowed)
             self.assertEqual(ticket.rate_limit_limit, 500)
             self.assertEqual(ticket.rate_limit_remaining, 0)
+            self.assertEqual(ticket.rate_limit_reset, 3)
 
     def test_release_releases_every_reservation(self):
         release_calls = []

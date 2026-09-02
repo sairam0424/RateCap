@@ -11,6 +11,7 @@ class AllowResult:
     retry_after_ms: int = 0
     rate_limit_limit: int = 0
     rate_limit_remaining: int = 0
+    rate_limit_reset: int = 0
 
 
 @dataclass
@@ -28,12 +29,14 @@ class Ticket:
         retry_after_ms=0,
         rate_limit_limit=0,
         rate_limit_remaining=0,
+        rate_limit_reset=0,
         reservations=None,
     ):
         self.allowed = allowed
         self.retry_after_ms = retry_after_ms
         self.rate_limit_limit = rate_limit_limit
         self.rate_limit_remaining = rate_limit_remaining
+        self.rate_limit_reset = rate_limit_reset
         self._client = client
         self._key = key
         self._reservations = reservations or []
@@ -120,11 +123,13 @@ class Client:
             retry_after_ms = int(err.headers.get("Retry-After-Ms", 0) or 0)
             rate_limit_limit = int(err.headers.get("RateLimit-Limit", 0) or 0)
             rate_limit_remaining = int(err.headers.get("RateLimit-Remaining", 0) or 0)
+            rate_limit_reset = int(err.headers.get("RateLimit-Reset", 0) or 0)
             return AllowResult(
                 allowed=False,
                 retry_after_ms=retry_after_ms,
                 rate_limit_limit=rate_limit_limit,
                 rate_limit_remaining=rate_limit_remaining,
+                rate_limit_reset=rate_limit_reset,
             )
 
     def acquire(self, key, cost=None, priority=None, route=None):
@@ -148,6 +153,7 @@ class Client:
             retry_after_ms = int(err.headers.get("Retry-After-Ms", 0) or 0)
             rate_limit_limit = int(err.headers.get("RateLimit-Limit", 0) or 0)
             rate_limit_remaining = int(err.headers.get("RateLimit-Remaining", 0) or 0)
+            rate_limit_reset = int(err.headers.get("RateLimit-Reset", 0) or 0)
             return Ticket(
                 self,
                 key,
@@ -155,6 +161,7 @@ class Client:
                 retry_after_ms=retry_after_ms,
                 rate_limit_limit=rate_limit_limit,
                 rate_limit_remaining=rate_limit_remaining,
+                rate_limit_reset=rate_limit_reset,
                 reservations=reservations,
             )
 
