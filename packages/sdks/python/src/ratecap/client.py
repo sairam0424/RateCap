@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 class AllowResult:
     allowed: bool
     retry_after_ms: int = 0
+    rate_limit_limit: int = 0
+    rate_limit_remaining: int = 0
 
 
 @dataclass
@@ -18,9 +20,20 @@ class _Reservation:
 
 
 class Ticket:
-    def __init__(self, client, key, allowed, retry_after_ms=0, reservations=None):
+    def __init__(
+        self,
+        client,
+        key,
+        allowed,
+        retry_after_ms=0,
+        rate_limit_limit=0,
+        rate_limit_remaining=0,
+        reservations=None,
+    ):
         self.allowed = allowed
         self.retry_after_ms = retry_after_ms
+        self.rate_limit_limit = rate_limit_limit
+        self.rate_limit_remaining = rate_limit_remaining
         self._client = client
         self._key = key
         self._reservations = reservations or []
@@ -88,28 +101,43 @@ class Client:
                 time.sleep(self._backoff_base * (2**attempt))
                 attempt += 1
 
-    def allow(self, key, cost=None, priority=None):
+    def allow(self, key, cost=None, priority=None, route=None):
         params = {"key": key, "skip_reservations": "true"}
         if cost is not None:
             params["cost"] = str(cost)
         query = urllib.parse.urlencode(params)
         url = f"{self._sidecar_addr}/check?{query}"
-        headers = {"x-ratecap-priority": priority} if priority else {}
+        headers = {}
+        if priority:
+            headers["x-ratecap-priority"] = priority
+        if route:
+            headers["x-ratecap-route"] = route
         req = urllib.request.Request(url, method="GET", headers=headers)
         try:
             with self._urlopen(req) as resp:
                 return AllowResult(allowed=True)
         except urllib.error.HTTPError as err:
             retry_after_ms = int(err.headers.get("Retry-After-Ms", 0) or 0)
-            return AllowResult(allowed=False, retry_after_ms=retry_after_ms)
+            rate_limit_limit = int(err.headers.get("RateLimit-Limit", 0) or 0)
+            rate_limit_remaining = int(err.headers.get("RateLimit-Remaining", 0) or 0)
+            return AllowResult(
+                allowed=False,
+                retry_after_ms=retry_after_ms,
+                rate_limit_limit=rate_limit_limit,
+                rate_limit_remaining=rate_limit_remaining,
+            )
 
-    def acquire(self, key, cost=None, priority=None):
+    def acquire(self, key, cost=None, priority=None, route=None):
         params = {"key": key}
         if cost is not None:
             params["cost"] = str(cost)
         query = urllib.parse.urlencode(params)
         url = f"{self._sidecar_addr}/check?{query}"
-        headers = {"x-ratecap-priority": priority} if priority else {}
+        headers = {}
+        if priority:
+            headers["x-ratecap-priority"] = priority
+        if route:
+            headers["x-ratecap-route"] = route
         req = urllib.request.Request(url, method="GET", headers=headers)
         try:
             with self._urlopen(req) as resp:
@@ -118,11 +146,15 @@ class Client:
         except urllib.error.HTTPError as err:
             reservations = self._parse_reservations(err.headers)
             retry_after_ms = int(err.headers.get("Retry-After-Ms", 0) or 0)
+            rate_limit_limit = int(err.headers.get("RateLimit-Limit", 0) or 0)
+            rate_limit_remaining = int(err.headers.get("RateLimit-Remaining", 0) or 0)
             return Ticket(
                 self,
                 key,
                 allowed=False,
                 retry_after_ms=retry_after_ms,
+                rate_limit_limit=rate_limit_limit,
+                rate_limit_remaining=rate_limit_remaining,
                 reservations=reservations,
             )
 

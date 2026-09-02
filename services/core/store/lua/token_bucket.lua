@@ -4,7 +4,7 @@
 -- ARGV[3] = cost (tokens requested)
 -- ARGV[4] = now (unix millis)
 --
--- Returns {allowed (1/0), retry_after_ms}
+-- Returns {allowed (1/0), retry_after_ms, remaining}
 
 local key = KEYS[1]
 local rate = tonumber(ARGV[1])
@@ -36,4 +36,7 @@ end
 
 redis.call("HSET", key, "tokens", tokens, "updated_at", now)
 redis.call("EXPIRE", key, math.ceil(burst / rate) + 60)
-return {allowed, retry_after_ms}
+-- Redis truncates non-integer Lua numbers to whole numbers on return to the
+-- client anyway; math.floor makes that truncation explicit rather than
+-- relying on the implicit conversion.
+return {allowed, retry_after_ms, math.floor(tokens)}
