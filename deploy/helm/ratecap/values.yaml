@@ -114,6 +114,21 @@ config:
         shadow_mode: false
 # END GENERATED CONFIG
 
+# criticalRoutes is optional and off by default, matching the tls/
+# networkPolicy opt-in convention. When enabled, `yaml` is mounted into the
+# sidecar as critical-routes.yaml (added as a second key on the same
+# ConfigMap that already carries ratecap.yaml) and RATECAP_CRITICAL_ROUTES_PATH
+# is set to point at it — mirroring deploy/docker-compose.yml's
+# ./critical-routes.yaml wiring for the sidecar service. Without this, the
+# critical_routes priority-resolution fallback (step 2 of the priority order:
+# header -> route match -> default) is permanently unavailable to
+# Helm-based deployments; docker-compose users get it out of the box.
+# See docs/superpowers/specs/2026-09-02-tier-3-critical-routes-design.md.
+criticalRoutes:
+  enabled: false
+  yaml: |
+    critical_routes: []
+
 # sharedSecret is BYO-only: the chart never generates or stores a secret
 # value. Create the Secret out-of-band first, e.g.:
 #   kubectl create secret generic ratecap-shared-secret \

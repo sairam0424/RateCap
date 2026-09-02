@@ -4,6 +4,8 @@
 **Status:** Approved
 **Research basis:** Two deep-research passes (213 subagents, ~15.6M tokens combined), adversarial verification against primary sources; naming/registry availability confirmed via direct API checks (npm, crates.io, PyPI, GitHub, RDAP).
 
+**Erratum (2026-09-02):** the `sync_rate` field and the sidecar-pulls-config-from-core mechanism described in the Configuration section below were never built. `default_priority` and tier 4's thresholds shipped instead as sidecar-local env vars (two separate later design decisions — see `docs/superpowers/specs/2026-07-15-tier-4-worker-shedder-design.md`), and the vestigial `sync_rate` YAML field was deleted outright rather than wired up (see `CLAUDE.md`'s Gotchas section). This section is left as-written below for historical context; do not use it as a current reference for `ratecap.yaml`'s actual schema.
+
 ---
 
 ## Problem

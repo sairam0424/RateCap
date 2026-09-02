@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+Found by a full end-to-end production dry-run (real `docker compose` stack, live traffic through all 4 tiers, mTLS, admin auth, graceful shutdown) plus a parallel documentation/deploy-config/supply-chain audit, each finding independently re-verified against the live repo before being fixed:
+
+- **`RATECAP_CRITICAL_ROUTES_PATH` had zero wiring in the Helm chart** — Helm-based deployments had no values key, ConfigMap entry, or env var to enable `critical_routes` at all, unlike docker-compose users who got it out of the box. Added an opt-in `criticalRoutes.enabled`/`criticalRoutes.yaml` values key, a second ConfigMap key, and the matching sidecar env var + volume mount; verified via `helm template`/`helm lint` in both the default (disabled, byte-identical output) and enabled cases, including combined with `tls.enabled`.
+- **`deploy/ratecap-bench.yaml` still had Tier 2 bounded queueing OFF** while `ratecap.yaml` and the Helm chart's embedded config default it on — benchmark numbers didn't reflect the config real deployments actually run. Added the matching `queueing_enabled`/`max_backlog`/`max_queue_wait_ms`/`poll_interval_ms` block.
+- **The sidecar's own defensive self-throttle (issue #56's fix) was invisible in the demo stack** — `RATECAP_SIDECAR_MAX_RPS` was never set in `deploy/docker-compose.yml`, defaulting to 1000 req/s, far above anything a normal demo session would generate. Set to `20` (confirmed live during the dry run: a 40-way concurrent flood now visibly produces `429`s while normal CI/demo traffic is unaffected).
+- **`CLAUDE.md`, `CONTRIBUTING.md`, and `ARCHITECTURE.md` had drifted from the actual current repo state**: `CLAUDE.md` still claimed README's Quick Start was missing the cert-gen step (already fixed there, but the claim was never updated) while `CONTRIBUTING.md`'s parallel "Run the end-to-end demo" section had the *actual*, still-broken version of that same omission; `ARCHITECTURE.md` and `CONTRIBUTING.md` both still described the Python SDK's PyPI publish as pending, despite two real publishes (`0.1.0`, `0.1.1`) having already shipped; `README.md`'s release-download example was pinned to a two-releases-stale tag.
+- **The v1 design spec (`docs/superpowers/specs/2026-07-13-ratecap-v1-design.md`), which `CLAUDE.md` points readers to as "the full design," still described the deleted `sync_rate` field and a sidecar-config-sync mechanism that was never built**, with no erratum — added one rather than rewriting the historical spec text.
+
 ## [2.13.1] — 2026-09-02 — Republish Stale Python SDK + Helm Chart Version Sync
 
 Patch: a direct audit of published-artifact state (PyPI, Artifact Hub) against the repo found both genuinely out of sync, not just cosmetically behind.

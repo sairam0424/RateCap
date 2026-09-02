@@ -15,7 +15,7 @@ RateCap: a hybrid core-engine + sidecar rate-limiter/load-shedder, faithfully re
 - **lint**: `golangci-lint run` from inside each Go module directory (config: repo-root `.golangci.yml`) — also a CI gate, matrixed the same way as build-and-test
 - **Python SDK** (`packages/sdks/python` — not a Go module, not in `go.work`): `pip install -e . && python -m unittest discover -s tests -v`
 - **regenerate proto**: `protoc -I proto --go_out=proto --go_opt=module=github.com/sairam0424/RateCap/proto --go-grpc_out=proto --go-grpc_opt=module=github.com/sairam0424/RateCap/proto ratecap/v1/ratecap.proto` (run from repo root; requires `protoc-gen-go` and `protoc-gen-go-grpc` on `PATH`; `-I proto` keeps the file descriptor's canonical name as `ratecap/v1/ratecap.proto`, not `proto/ratecap/v1/ratecap.proto`)
-- **run the demo stack**: `cd deploy && bash generate-demo-certs.sh && docker compose up --build` — the cert-gen step is required first: `docker-compose.yml` hardcodes mTLS env vars for both services, so startup fails on missing cert files without it. (The README's own top-level Quick Start omits this step and is broken as written; its Benchmarks section and CI's e2e-smoke job both include it.)
+- **run the demo stack**: `cd deploy && bash generate-demo-certs.sh && docker compose up --build` — the cert-gen step is required first: `docker-compose.yml` hardcodes mTLS env vars for both services, so startup fails on missing cert files without it. (README's own top-level Quick Start already includes this step; CONTRIBUTING.md's parallel "Run the end-to-end demo" section does not — see its own note.)
 
 ## Scope discipline
 
