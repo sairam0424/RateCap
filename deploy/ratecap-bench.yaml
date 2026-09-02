@@ -7,6 +7,16 @@ tiers:
     default_max_concurrent: 1000
     max_request_duration_ms: 30000
     shadow_mode: false
+    # Matches ratecap.yaml/values.yaml's queueing_enabled: true — every real
+    # deployment surface defaults to queueing on, so benchmark numbers must
+    # reflect that, not the old immediate-reject-on-cap behavior.
+    # max_backlog scales with default_max_concurrent (20%); max_queue_wait_ms
+    # and poll_interval_ms are latency/SLA values, kept identical to the
+    # demo config rather than scaled.
+    queueing_enabled: true
+    max_backlog: 200
+    max_queue_wait_ms: 2000
+    poll_interval_ms: 25
   fleet_shedder:
     default_max_concurrent: 1000
     reserved_critical_pct: 40

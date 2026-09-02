@@ -5,3 +5,7 @@ metadata:
 data:
   ratecap.yaml: |
 {{ .Values.config.yaml | indent 4 }}
+  {{- if .Values.criticalRoutes.enabled }}
+  critical-routes.yaml: |
+{{ .Values.criticalRoutes.yaml | indent 4 }}
+  {{- end }}

@@ -52,11 +52,22 @@ spec:
             - name: RATECAP_TLS_CA_PATH
               value: /etc/ratecap/certs/ca.crt
             {{- end }}
-          {{- if .Values.tls.enabled }}
+            {{- if .Values.criticalRoutes.enabled }}
+            - name: RATECAP_CRITICAL_ROUTES_PATH
+              value: /etc/ratecap/critical-routes.yaml
+            {{- end }}
+          {{- if or .Values.tls.enabled .Values.criticalRoutes.enabled }}
           volumeMounts:
+            {{- if .Values.tls.enabled }}
             - name: tls-certs
               mountPath: /etc/ratecap/certs
               readOnly: true
+            {{- end }}
+            {{- if .Values.criticalRoutes.enabled }}
+            - name: critical-routes
+              mountPath: /etc/ratecap/critical-routes.yaml
+              subPath: critical-routes.yaml
+            {{- end }}
           {{- end }}
           readinessProbe:
             httpGet:
@@ -66,11 +77,18 @@ spec:
             httpGet:
               path: /healthz
               port: {{ .Values.sidecar.port }}
-      {{- if .Values.tls.enabled }}
+      {{- if or .Values.tls.enabled .Values.criticalRoutes.enabled }}
       volumes:
+        {{- if .Values.tls.enabled }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.sidecar.existingSecretName }}
+        {{- end }}
+        {{- if .Values.criticalRoutes.enabled }}
+        - name: critical-routes
+          configMap:
+            name: {{ .Release.Name }}-config
+        {{- end }}
       {{- end }}
 ---
 apiVersion: v1

@@ -140,7 +140,7 @@ Distributed tracing covers exactly one hop: `ratecap-sidecar`'s gRPC call to `ra
 ### Known limitations
 
 - Tracing does not extend past the sidecar→core hop: no span wraps the Redis/Lua-script calls core makes underneath `CheckRateLimit`, and there is no further hop to propagate to beyond core. The health-check gRPC server on `:9091` and the caller→sidecar HTTP leg are also not instrumented (out of scope — see the Tracing section above).
-- The Python SDK's PyPI publish is pending: `.github/workflows/publish-python-sdk.yml` and its PyPI Trusted Publisher (OIDC) setup are ready, but no `python-sdk-v*` tag has been pushed yet — see [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi-one-time-setup) for the one-time setup a repo admin must complete first.
+- The Python SDK has been published to PyPI as `ratecap` since `python-sdk-v0.1.0` (2026-09-01); see [CONTRIBUTING.md](CONTRIBUTING.md#releasing-the-python-sdk-to-pypi) for the release process and the one-time Trusted Publisher setup it documents.
 
 ### Tier 4 shed-curve ramping
 

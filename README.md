@@ -77,7 +77,7 @@ Every tagged release (`vX.Y.Z`) publishes prebuilt `ratecapctl` binaries as GitH
 
 ```bash
 # example: Linux amd64 — swap in your platform's asset name and the release tag you want
-curl -LO https://github.com/sairam0424/RateCap/releases/download/v2.12.0/ratecapctl_linux_amd64
+curl -LO https://github.com/sairam0424/RateCap/releases/download/v2.13.1/ratecapctl_linux_amd64
 chmod +x ratecapctl_linux_amd64
 ./ratecapctl_linux_amd64 --help
 ```
