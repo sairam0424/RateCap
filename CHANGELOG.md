@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.13.1] — 2026-09-02 — Republish Stale Python SDK + Helm Chart Version Sync
+
+Patch: a direct audit of published-artifact state (PyPI, Artifact Hub) against the repo found both genuinely out of sync, not just cosmetically behind.
+
 ### Fixed
+
+- **PyPI's `ratecap` package was stale.** It had been published once, at `0.1.0` (2026-09-01, tag `python-sdk-v0.1.0`), and never republished — meaning it predated both `v2.13.0`'s `RateLimit-Limit`/`RateLimit-Remaining` header parsing and the separate `RateLimit-Reset` fix below, despite both being real, shipped SDK behavior changes. Bumped `packages/sdks/python/pyproject.toml` to `0.1.1` and tagged `python-sdk-v0.1.1` to trigger a fresh publish.
+- **The Helm chart's version was never bumped for real content changes, and a stale-version republish silently overwrote it.** `deploy/helm/ratecap/values.yaml` changed (removed the vestigial `sync_rate` field, enabled Tier 2 queueing) without a corresponding `Chart.yaml` `version` bump; the `v2.13.0` tag push then re-ran the chart-publish job anyway (it triggers on any `v*` tag) and re-pushed the *same* OCI tag `0.1.1` with the now-different content — overwriting, rather than versioning, that artifact. `appVersion` was also stale at `2.12.1` despite the repo already being at `2.13.0`. Bumped `Chart.yaml` to `version: 0.1.2`, `appVersion: "2.13.0"`.
+
+### Fixed (carried over from Unreleased)
 
 - **Python SDK now parses `RateLimit-Reset`** — closes the gap `v2.13.0`'s own Note flagged as deliberately deferred, matching the precedent an earlier standalone Go SDK fix (`0c79271`) set for the same class of gap. `AllowResult`/`Ticket` gained a matching `rate_limit_reset` field.
 - **Fixed a real reload race in `services/sidecar/criticalroutes.Watch`**: `os.WriteFile`'s truncate-then-write can be observed by the fsnotify watcher as two separate events, the first against a transiently-empty file — which parses as valid, empty YAML, silently defeating the "keep last-known-good on malformed reload" guarantee. Added the same debounce window `services/core/config/watcher.go` already used for the identical reason, deterministically reproduced via a manually-spaced truncate/write regression test.
