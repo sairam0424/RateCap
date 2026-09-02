@@ -71,7 +71,7 @@ func TestCheckAndDecrement_AllowsWithinBurst(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		allowed, _, err := s.CheckAndDecrement(ctx, "test-key-burst", 10, 5, 1)
+		allowed, _, _, err := s.CheckAndDecrement(ctx, "test-key-burst", 10, 5, 1)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -87,12 +87,12 @@ func TestCheckAndDecrement_RejectsOverBurst(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		if _, _, err := s.CheckAndDecrement(ctx, "test-key-reject", 10, 5, 1); err != nil {
+		if _, _, _, err := s.CheckAndDecrement(ctx, "test-key-reject", 10, 5, 1); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
 
-	allowed, retryAfterMs, err := s.CheckAndDecrement(ctx, "test-key-reject", 10, 5, 1)
+	allowed, retryAfterMs, _, err := s.CheckAndDecrement(ctx, "test-key-reject", 10, 5, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,6 +101,70 @@ func TestCheckAndDecrement_RejectsOverBurst(t *testing.T) {
 	}
 	if retryAfterMs <= 0 {
 		t.Fatalf("expected positive retryAfterMs, got %d", retryAfterMs)
+	}
+}
+
+func TestCheckAndDecrement_ReturnsRemainingAfterAllow(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	_, _, remaining, err := s.CheckAndDecrement(ctx, "test-key-remaining-allow", 10, 5, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if remaining != 4 {
+		t.Fatalf("expected remaining=4 after the first allowed request against a burst of 5, got %d", remaining)
+	}
+}
+
+func TestCheckAndDecrement_RemainingStaysAtLastAllowedValueOnReject(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		if _, _, _, err := s.CheckAndDecrement(ctx, "test-key-remaining-reject", 10, 5, 1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	allowed, _, remaining, err := s.CheckAndDecrement(ctx, "test-key-remaining-reject", 10, 5, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allowed {
+		t.Fatalf("6th request should be rejected, burst is 5")
+	}
+	if remaining != 0 {
+		t.Fatalf("expected remaining=0 on the rejecting call, not negative, got %d", remaining)
+	}
+}
+
+func TestCheckAndDecrement_RemainingReflectsRefillOverTime(t *testing.T) {
+	client := startRedis(t)
+	s := store.NewRedisStore(client, testSigningKey)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		if _, _, _, err := s.CheckAndDecrement(ctx, "test-key-remaining-refill", 10, 5, 1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	_, _, exhaustedRemaining, err := s.CheckAndDecrement(ctx, "test-key-remaining-refill", 10, 5, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	_, _, refilledRemaining, err := s.CheckAndDecrement(ctx, "test-key-remaining-refill", 10, 5, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if refilledRemaining <= exhaustedRemaining {
+		t.Fatalf("expected remaining to increase after sleeping past a refill interval, got exhausted=%d refilled=%d", exhaustedRemaining, refilledRemaining)
 	}
 }
 
@@ -115,7 +179,7 @@ func TestCheckAndDecrement_ConcurrentAtomicity(t *testing.T) {
 
 	for i := 0; i < attempts; i++ {
 		go func() {
-			allowed, _, err := s.CheckAndDecrement(ctx, "test-key-concurrent", 1, burst, 1)
+			allowed, _, _, err := s.CheckAndDecrement(ctx, "test-key-concurrent", 1, burst, 1)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -326,7 +390,7 @@ func TestCheckAndDecrementAndIncrConcurrent_SameKeyDoNotCollide(t *testing.T) {
 	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
-	allowed, _, err := s.CheckAndDecrement(ctx, "shared-user", 10, 5, 1)
+	allowed, _, _, err := s.CheckAndDecrement(ctx, "shared-user", 10, 5, 1)
 	if err != nil {
 		t.Fatalf("unexpected error from CheckAndDecrement: %v", err)
 	}
@@ -476,7 +540,7 @@ func TestCheckAndDecrement_RecordsRedisCallMetric(t *testing.T) {
 	ctx := context.Background()
 
 	before := histogramSampleCount(t, coremetrics.RedisCallDuration, "check_and_decrement")
-	_, _, err := s.CheckAndDecrement(ctx, "test-key-metric", 10, 5, 1)
+	_, _, _, err := s.CheckAndDecrement(ctx, "test-key-metric", 10, 5, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -510,7 +574,7 @@ func TestRefundTokens_ReturnsUnusedTokensUpToBurst(t *testing.T) {
 	ctx := context.Background()
 
 	// Reserve 10, actually use 3 -> refund 7.
-	allowed, _, err := s.CheckAndDecrement(ctx, "refund-key", 10, 10, 10)
+	allowed, _, _, err := s.CheckAndDecrement(ctx, "refund-key", 10, 10, 10)
 	if err != nil || !allowed {
 		t.Fatalf("unexpected setup failure: allowed=%v err=%v", allowed, err)
 	}
@@ -519,7 +583,7 @@ func TestRefundTokens_ReturnsUnusedTokensUpToBurst(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	allowed, _, err = s.CheckAndDecrement(ctx, "refund-key", 10, 10, 7)
+	allowed, _, _, err = s.CheckAndDecrement(ctx, "refund-key", 10, 10, 7)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -533,7 +597,7 @@ func TestRefundTokens_ClampsToBurstEvenWithLargeRefund(t *testing.T) {
 	s := store.NewRedisStore(client, testSigningKey)
 	ctx := context.Background()
 
-	allowed, _, err := s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 1)
+	allowed, _, _, err := s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 1)
 	if err != nil || !allowed {
 		t.Fatalf("unexpected setup failure: allowed=%v err=%v", allowed, err)
 	}
@@ -542,7 +606,7 @@ func TestRefundTokens_ClampsToBurstEvenWithLargeRefund(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	allowed, _, err = s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 10)
+	allowed, _, _, err = s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -550,7 +614,7 @@ func TestRefundTokens_ClampsToBurstEvenWithLargeRefund(t *testing.T) {
 		t.Error("expected exactly burst=10 tokens to be available (not 1000+), i.e. the refund clamped")
 	}
 
-	allowed, _, err = s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 1)
+	allowed, _, _, err = s.CheckAndDecrement(ctx, "refund-clamp-key", 10, 10, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

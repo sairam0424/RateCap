@@ -18,16 +18,16 @@ type fakePropertyTokenBucketStore struct {
 	burst  int
 }
 
-func (f *fakePropertyTokenBucketStore) CheckAndDecrement(_ context.Context, _ string, rate, burst, cost int) (bool, int64, error) {
+func (f *fakePropertyTokenBucketStore) CheckAndDecrement(_ context.Context, _ string, rate, burst, cost int) (bool, int64, int64, error) {
 	if f.burst != burst {
 		f.tokens = float64(burst)
 		f.burst = burst
 	}
 	if f.tokens < float64(cost) {
-		return false, 0, nil
+		return false, 0, int64(f.tokens), nil
 	}
 	f.tokens -= float64(cost)
-	return true, 0, nil
+	return true, 0, int64(f.tokens), nil
 }
 
 func TestTokenBucketLimiter_NeverAllowsMoreThanBurstWithinOneWindow(t *testing.T) {

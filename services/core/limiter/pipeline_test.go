@@ -97,7 +97,7 @@ func TestPipeline_FirstTierRejectShortCircuitsSecondTier(t *testing.T) {
 
 func TestPipeline_SecondTierRejectPropagatesDecision(t *testing.T) {
 	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW}}
-	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 250}}
+	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 250, Tier: "rate_limiter", Limit: 100, Remaining: 0}}
 
 	p := limiter.NewPipeline(tier1, tier2)
 	d, err := p.Check(context.Background(), limiter.Request{Key: "user-1"})
@@ -110,6 +110,42 @@ func TestPipeline_SecondTierRejectPropagatesDecision(t *testing.T) {
 	}
 	if d.RetryAfterMs != 250 {
 		t.Fatalf("expected RetryAfterMs=250, got %d", d.RetryAfterMs)
+	}
+	if d.Tier != "rate_limiter" {
+		t.Errorf(`expected Tier="rate_limiter", got %q`, d.Tier)
+	}
+	if d.Limit != 100 {
+		t.Errorf("expected Limit=100, got %d", d.Limit)
+	}
+	if d.Remaining != 0 {
+		t.Errorf("expected Remaining=0, got %d", d.Remaining)
+	}
+}
+
+func TestPipeline_FirstTierRejectPropagatesLimitAndRemaining(t *testing.T) {
+	tier1 := &fakeTier{decision: limiter.Decision{Action: limiter.REJECT_429, RetryAfterMs: 500, Tier: "rate_limiter", Limit: 5, Remaining: 0}}
+	tier2 := &fakeTier{decision: limiter.Decision{Action: limiter.ALLOW}}
+
+	p := limiter.NewPipeline(tier1, tier2)
+	d, err := p.Check(context.Background(), limiter.Request{Key: "user-1"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.Action != limiter.REJECT_429 {
+		t.Fatalf("expected REJECT_429, got %v", d.Action)
+	}
+	if d.Tier != "rate_limiter" {
+		t.Errorf(`expected Tier="rate_limiter", got %q`, d.Tier)
+	}
+	if d.Limit != 5 {
+		t.Errorf("expected Limit=5, got %d", d.Limit)
+	}
+	if d.Remaining != 0 {
+		t.Errorf("expected Remaining=0, got %d", d.Remaining)
+	}
+	if tier2.called {
+		t.Fatal("expected tier2 to be short-circuited, but it was called")
 	}
 }
 

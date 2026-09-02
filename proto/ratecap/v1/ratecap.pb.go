@@ -251,6 +251,8 @@ type CheckRateLimitResponse struct {
 	RetryAfterMs  int64                  `protobuf:"varint,2,opt,name=retry_after_ms,json=retryAfterMs,proto3" json:"retry_after_ms,omitempty"`
 	Reservations  []*TokenReservation    `protobuf:"bytes,3,rep,name=reservations,proto3" json:"reservations,omitempty"`
 	Tier          string                 `protobuf:"bytes,4,opt,name=tier,proto3" json:"tier,omitempty"`
+	Limit         int64                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
+	Remaining     int64                  `protobuf:"varint,6,opt,name=remaining,proto3" json:"remaining,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -311,6 +313,20 @@ func (x *CheckRateLimitResponse) GetTier() string {
 		return x.Tier
 	}
 	return ""
+}
+
+func (x *CheckRateLimitResponse) GetLimit() int64 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *CheckRateLimitResponse) GetRemaining() int64 {
+	if x != nil {
+		return x.Remaining
+	}
+	return 0
 }
 
 type ReleaseConcurrencyRequest struct {
@@ -614,12 +630,14 @@ const file_ratecap_v1_ratecap_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
 	"\x04cost\x18\x02 \x01(\x05R\x04cost\x12+\n" +
 	"\x11skip_reservations\x18\x03 \x01(\bR\x10skipReservations\x120\n" +
-	"\bpriority\x18\x04 \x01(\x0e2\x14.ratecap.v1.PriorityR\bpriority\"\xc0\x01\n" +
+	"\bpriority\x18\x04 \x01(\x0e2\x14.ratecap.v1.PriorityR\bpriority\"\xf4\x01\n" +
 	"\x16CheckRateLimitResponse\x12*\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x12.ratecap.v1.ActionR\x06action\x12$\n" +
 	"\x0eretry_after_ms\x18\x02 \x01(\x03R\fretryAfterMs\x12@\n" +
 	"\freservations\x18\x03 \x03(\v2\x1c.ratecap.v1.TokenReservationR\freservations\x12\x12\n" +
-	"\x04tier\x18\x04 \x01(\tR\x04tier\"Z\n" +
+	"\x04tier\x18\x04 \x01(\tR\x04tier\x12\x14\n" +
+	"\x05limit\x18\x05 \x01(\x03R\x05limit\x12\x1c\n" +
+	"\tremaining\x18\x06 \x01(\x03R\tremaining\"Z\n" +
 	"\x19ReleaseConcurrencyRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x11concurrency_token\x18\x02 \x01(\tR\x10concurrencyToken\"\x1c\n" +

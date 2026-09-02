@@ -21,6 +21,7 @@ import (
 
 	"github.com/sairam0424/RateCap/services/sidecar/admin"
 	"github.com/sairam0424/RateCap/services/sidecar/auth"
+	"github.com/sairam0424/RateCap/services/sidecar/criticalroutes"
 	"github.com/sairam0424/RateCap/services/sidecar/metrics"
 	"github.com/sairam0424/RateCap/services/sidecar/negativecache"
 	"github.com/sairam0424/RateCap/services/sidecar/otelinit"
@@ -244,8 +245,24 @@ func main() {
 	rampStartPct := resolveRampStartPct(os.Getenv("RATECAP_SHED_RAMP_START_PCT"), 100)
 	shedder := worker.NewShedderWithRamp(maxInflight, rampStartPct)
 
+	// RATECAP_CRITICAL_ROUTES_PATH is optional: an operator who never sets it
+	// gets a nil *criticalroutes.Set, which Set.Contains treats as "never
+	// matches" — byte-for-byte the same behavior as before this env var
+	// existed. See docs/superpowers/specs/2026-09-02-tier-3-critical-routes-design.md.
+	var criticalRoutes *criticalroutes.Set
+	if criticalRoutesPath := os.Getenv("RATECAP_CRITICAL_ROUTES_PATH"); criticalRoutesPath == "" {
+		log.Printf("RATECAP_CRITICAL_ROUTES_PATH not set — critical_routes priority-resolution fallback (step 2) is disabled; only header (step 1) and default (step 3) apply")
+	} else {
+		var stopCriticalRoutesWatch func()
+		criticalRoutes, stopCriticalRoutesWatch, err = criticalroutes.Watch(criticalRoutesPath)
+		if err != nil {
+			log.Fatalf("failed to load critical routes from %s: %v", criticalRoutesPath, err) //nolint:gosec // criticalRoutesPath is a startup env var (RATECAP_CRITICAL_ROUTES_PATH), not attacker input
+		}
+		defer stopCriticalRoutesWatch()
+	}
+
 	protectedMux := http.NewServeMux()
-	protectedMux.Handle("/check", proxy.NewHandlerWithCache(client, proxy.Sheddable, shedder, negativecache.New()))
+	protectedMux.Handle("/check", proxy.NewHandlerWithCriticalRoutes(client, proxy.Sheddable, shedder, negativecache.New(), criticalRoutes))
 	protectedMux.Handle("/release", proxy.NewReleaseHandler(client))
 
 	if _, err := maybeStartPprofServer(resolvePprofEnabled(os.Getenv("RATECAP_PPROF_ENABLED")), "127.0.0.1:6061"); err != nil {

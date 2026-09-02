@@ -1,0 +1,3 @@
+critical_routes:
+  - "POST /v1/charges"
+  - "POST /v1/payment_intents"
