@@ -153,7 +153,15 @@ jobs:
 
       - name: Install package
         working-directory: packages/sdks/python
-        run: pip install -e . && pip install coverage
+        # --no-deps on the editable install and a separate --require-hashes
+        # install for coverage: pip refuses --require-hashes in the same
+        # invocation as `-e .` ("no single file to hash"), so the two must
+        # be split. ratecap itself declares zero runtime dependencies, so
+        # --no-deps changes nothing functionally. See requirements-ci.txt
+        # for the coverage hash and why its closure is just one package.
+        run: |
+          pip install --no-deps -e .
+          pip install --require-hashes -r requirements-ci.txt
 
       - name: Test
         working-directory: packages/sdks/python
