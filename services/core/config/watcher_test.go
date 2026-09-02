@@ -380,3 +380,65 @@ tiers:
 		t.Fatal("timed out waiting for reload after delete+recreate — fsnotify.Add watches a directory here, so a recreated file under the same dir should still be seen")
 	}
 }
+
+func TestWatch_StopEndsTheWatcher(t *testing.T) {
+	path := writeTempConfig(t, `
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`)
+
+	stop, err := config.Watch(path, func(cfg *config.Config, err error) {})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stop()
+	stop()
+}
+
+// TestWatch_StopBlocksUntilWatcherGoroutineExits proves stop() is genuinely
+// synchronous, not just idempotent: a file rewrite issued immediately after
+// stop() returns must never be observed, because by then the watcher
+// goroutine has already exited and its fsnotify watcher is closed. Before
+// the fix (close(done) without waiting for the goroutine to exit), this test
+// was flaky -- the still-running goroutine could win the race and pick up
+// the post-stop rewrite.
+func TestWatch_StopBlocksUntilWatcherGoroutineExits(t *testing.T) {
+	path := writeTempConfig(t, `
+tiers:
+  rate_limiter:
+    default_rate: 100
+    default_burst: 500
+    shadow_mode: false
+`)
+
+	changes := make(chan *config.Config, 5)
+	stop, err := config.Watch(path, func(cfg *config.Config, loadErr error) {
+		if loadErr == nil {
+			changes <- cfg
+		}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stop()
+	if err := os.WriteFile(path, []byte(`
+tiers:
+  rate_limiter:
+    default_rate: 999
+    default_burst: 999
+    shadow_mode: true
+`), 0600); err != nil {
+		t.Fatalf("failed to write config after stop: %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	select {
+	case cfg := <-changes:
+		t.Fatalf("expected the watcher to have stopped reloading after stop() returned, got a reload with DefaultRate=%d", cfg.Tiers.RateLimiter.DefaultRate)
+	default:
+	}
+}
