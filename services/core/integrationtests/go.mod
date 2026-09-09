@@ -7,7 +7,7 @@ replace github.com/sairam0424/RateCap/services/core => ../
 require (
 	github.com/Shopify/toxiproxy/v2 v2.12.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/client_model v0.6.3
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/sairam0424/RateCap/services/core v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.44.0
