@@ -1,0 +1,33 @@
+language: en-US
+enable_free_tier: true
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  auto_review:
+    enabled: true
+    ignore_usernames: ["dependabot[bot]"]
+  path_filters:
+    - "!**/*.pb.go"
+    - "!vendor/**"
+    - "!bin/**"
+  path_instructions:
+    - path: "**/*.go"
+      instructions: >
+        Flag unchecked errors, goroutine leaks, missing context cancellation,
+        and rate-limiter correctness issues (race conditions on shared
+        counters/token buckets, off-by-one window boundaries).
+    - path: "**/*_test.go"
+      instructions: "Verify table-driven tests cover boundary conditions on rate windows."
+  tools:
+    golangci-lint:
+      enabled: true
+      config_file: ".golangci.yml"
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+
+knowledge_base:
+  learnings:
+    scope: local
