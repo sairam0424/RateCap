@@ -6,6 +6,7 @@ reviews:
   request_changes_workflow: false
   auto_review:
     enabled: true
+    base_branches: ["^develop$"]
     ignore_usernames: ["dependabot[bot]"]
   path_filters:
     - "!**/*.pb.go"
