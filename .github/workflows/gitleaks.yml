@@ -1,0 +1,31 @@
+name: Gitleaks
+
+# Standalone, tool-independent secret scan that runs unconditionally on
+# every push/PR. Native GitHub secret scanning + push protection are already
+# enabled, and .coderabbit.yaml lists gitleaks as a CodeRabbit review tool,
+# but this repo has 0 GitHub stars — CodeRabbit's free tier gates automatic
+# PR auto-review behind a star threshold, requiring a manual
+# `@coderabbitai review` comment per PR — so a dedicated Actions job is the
+# only reliably-automatic gate for this.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE intentionally omitted: only required for
+          # GitHub Organizations, not personal-account repos (this one).

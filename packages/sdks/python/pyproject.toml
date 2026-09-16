@@ -19,3 +19,16 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+# tests/*.py deliberately puts sys.path.insert(...) before the ratecap/
+# fake_sidecar imports it enables — see the comments in test_client.py and
+# test_cost.py for why (unittest discover's start_dir sys.path rules).
+"tests/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
