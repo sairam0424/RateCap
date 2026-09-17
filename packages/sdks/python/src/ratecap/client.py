@@ -2,7 +2,7 @@ import ssl
 import time
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -117,7 +117,7 @@ class Client:
             headers["x-ratecap-route"] = route
         req = urllib.request.Request(url, method="GET", headers=headers)
         try:
-            with self._urlopen(req) as resp:
+            with self._urlopen(req):
                 return AllowResult(allowed=True)
         except urllib.error.HTTPError as err:
             retry_after_ms = int(err.headers.get("Retry-After-Ms", 0) or 0)
