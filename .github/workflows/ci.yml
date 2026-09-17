@@ -321,8 +321,8 @@ jobs:
         with:
           directory: /tmp/rendered-manifests
           framework: kubernetes
-          output_format: cli,sarif
-          output_file_path: console,results.sarif
+          output_format: sarif
+          output_file_path: results.sarif
           # soft_fail: this is the chart's first-ever security-focused IaC
           # scan, so findings need a human triage pass before this becomes a
           # hard gate — results still upload to the Security tab below either way.
