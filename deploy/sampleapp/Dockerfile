@@ -6,6 +6,6 @@ RUN printf 'go 1.26.2\n\nuse ./packages/sdks/go\nuse ./deploy/sampleapp\n' > go.
 WORKDIR /src/deploy/sampleapp
 RUN go build -o /sampleapp .
 
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 COPY --from=build /sampleapp /usr/local/bin/sampleapp
 ENTRYPOINT ["/usr/local/bin/sampleapp"]
